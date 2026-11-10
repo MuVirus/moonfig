@@ -180,34 +180,48 @@ fn[T : @json.FromJson] extract_at(
     @json.JsonDecodeError((path, message)) =>
       raise explain(v, prefix, path, message)
   }
+  // 正常解码可能把特殊形状的来源静默换成了别的类型。下面三个探针都逐个
+  // 节点检查：一次解码只替换一个节点，其余节点与正常解码完全相同，所以
+  // 报错必然来自被替换的节点——某个节点的失败不会掩盖后面的节点。（早期
+  // 版本整棵树换一遍只解一次，解码停在第一个错误上，`BigInt` / `Char`
+  // 这类字段的失败会吞掉探针，让后面字段的违规静默通过。）
+  //
   // 标准库的 `Int::from_json` 对 `Json::Number` 只做范围检查，小数会被
-  // `to_int()` 直接截断。这里用 `"NaN"` 探针补上这一层检查：
-  // `Double` / `Float` 接受字符串 `"NaN"`，整数类型只接受数字，会报错。
-  // 只有原值里确实有浮点时才多跑一遍，纯整数配置不受影响。
-  if has_float(v) {
-    let probe : T? = Some(@json.from_json(to_probe_json(v))) catch {
+  // `to_int()` 直接截断。浮点探针把 `Float` 节点换成字符串 `"NaN"`：
+  // `Double` / `Float` 接受它，整数类型只接受数字，会报错。
+  let float_paths : Array[@config.KeyPath] = []
+  collect_float_paths(v, @config.KeyPath::root(), float_paths)
+  for target in float_paths {
+    let probe : T? = Some(
+      @json.from_json(to_float_probe_json(v, @config.KeyPath::root(), target)),
+    ) catch {
       @json.JsonDecodeError((path, message)) => {
         let expected = expected_name(message)
         if is_integer_name(expected) {
           raise explain(v, prefix, path, message)
         }
-        // 探针失败但不是整数字段：可能是不接受 "NaN" 的自定义类型，
-        // 保持标准库原本的提取结果。
+        // 目标节点的字段不接受 "NaN" 但也不是整数字段：可能是不接受
+        // "NaN" 的自定义类型，保持标准库原本的提取结果。
         None
       }
     }
     ignore(probe)
   }
   // 标准库有些类型会把字符串当成别的形状：`Double` / `Float` 接受
-  // `"NaN"` / `"Infinity"` / `"-Infinity"`，`Int64` / `UInt64` 直接解析
-  // 字符串。正常解码能过，但那是字符串来源变成了数字，和严格类型不符。
-  // 把字符串换成一个普通字符串再解一次：这些类型会拒绝，字符串字段照常接受。
-  if has_str(v) {
-    let probe : T? = Some(@json.from_json(to_str_probe_json(v))) catch {
+  // `"NaN"` / `"Infinity"` / `"-Infinity"`，`Int64` / `UInt64` / `BigInt`
+  // 直接解析数字字符串。正常解码能过，但那是字符串来源变成了数字，和
+  // 严格类型不符。字符串探针把 `Str` 节点逐个换成普通标记串再解一次：
+  // 这些类型会拒绝，字符串字段照常接受。
+  let str_paths : Array[@config.KeyPath] = []
+  collect_str_paths(v, @config.KeyPath::root(), str_paths)
+  for target in str_paths {
+    let probe : T? = Some(
+      @json.from_json(to_str_probe_json(v, @config.KeyPath::root(), target)),
+    ) catch {
       @json.JsonDecodeError((path, message)) => {
         let expected = expected_name(message)
         match expected {
-          "Float" | "Bytes" | "Int64" | "UInt64" =>
+          "Float" | "Bytes" | "Int64" | "UInt64" | "BigInt" =>
             raise explain(v, prefix, path, message)
           _ => None
         }
@@ -215,22 +229,24 @@ fn[T : @json.FromJson] extract_at(
     }
     ignore(probe)
   }
-  // `Bytes` 和 `Str` 都映射成 `Json::String`，正常解码分不出来。这里逐个把
-  // Bytes 节点换成一个非字符串值：字节字段会报期望 Bytes（合法），字符串
-  // 字段会报期望 String，说明字节来源被当成字符串了。不用 `null` 是因为
-  // 可选类型可能把 `null` 当成缺省值，直接放过。
+  // `Bytes` 映射成 `Json::String`（可打印 ASCII 直通，其余 `\xHH`），正常
+  // 解码分不出字节来源和字符串来源。这里逐个把 Bytes 节点换成一个非字符串
+  // 值再解一次：字节字段会报期望 Bytes（合法）；报期望 String 说明字节来源
+  // 被当成字符串了；报期望 Float / Int64 / UInt64 / BigInt 说明字节内容被
+  // 标准库静默解析成了数字，同样是隐式转换，拒绝。不用 `null` 是因为可选
+  // 类型可能把 `null` 当成缺省值，直接放过。
   let bytes_paths : Array[@config.KeyPath] = []
   collect_bytes_paths(v, @config.KeyPath::root(), bytes_paths)
   for target in bytes_paths {
     let probe : T? = Some(
       @json.from_json(to_bytes_probe_json(v, @config.KeyPath::root(), target)),
     ) catch {
-      @json.JsonDecodeError((path, message)) => {
-        if expected_name(message) == "Str" {
-          raise explain(v, prefix, path, message)
+      @json.JsonDecodeError((path, message)) =>
+        match expected_name(message) {
+          "Str" | "Float" | "Int64" | "UInt64" | "BigInt" =>
+            raise explain(v, prefix, path, message)
+          _ => None
         }
-        None
-      }
     }
     ignore(probe)
   }
@@ -238,69 +254,103 @@ fn[T : @json.FromJson] extract_at(
 }
 
 ///|
-/// 树里有没有 `Float`。有才需要跑浮点探针。
-fn has_float(v : @config.Value) -> Bool {
+/// 树里所有 `Float` 节点的路径，浮点探针逐个检查。
+fn collect_float_paths(
+  v : @config.Value,
+  current : @config.KeyPath,
+  out : Array[@config.KeyPath],
+) -> Unit {
   match v.kind {
-    @config.ValueKind::Float(_) => true
-    @config.ValueKind::Array(items) => {
-      for item in items {
-        if has_float(item) {
-          return true
-        }
+    @config.ValueKind::Float(_) => out.push(current)
+    @config.ValueKind::Array(items) =>
+      for i, item in items {
+        collect_float_paths(item, current.add(i.to_string()), out)
       }
-      false
-    }
-    @config.ValueKind::Table(table) => {
-      for _key, item in table {
-        if has_float(item) {
-          return true
-        }
+    @config.ValueKind::Table(table) =>
+      for key, item in table {
+        collect_float_paths(item, current.add(key), out)
       }
-      false
-    }
-    _ => false
+    _ => ()
   }
 }
 
 ///|
-/// 树里有没有 `Str`。有才需要跑字符串探针。
-fn has_str(v : @config.Value) -> Bool {
+/// 树里所有 `Str` 节点的路径，字符串探针逐个检查。
+fn collect_str_paths(
+  v : @config.Value,
+  current : @config.KeyPath,
+  out : Array[@config.KeyPath],
+) -> Unit {
   match v.kind {
-    @config.ValueKind::Str(_) => true
-    @config.ValueKind::Array(items) => {
-      for item in items {
-        if has_str(item) {
-          return true
-        }
+    @config.ValueKind::Str(_) => out.push(current)
+    @config.ValueKind::Array(items) =>
+      for i, item in items {
+        collect_str_paths(item, current.add(i.to_string()), out)
       }
-      false
-    }
-    @config.ValueKind::Table(table) => {
-      for _key, item in table {
-        if has_str(item) {
-          return true
-        }
+    @config.ValueKind::Table(table) =>
+      for key, item in table {
+        collect_str_paths(item, current.add(key), out)
       }
-      false
-    }
-    _ => false
+    _ => ()
   }
 }
 
 ///|
-/// 把字符串换成普通标记的探针树，见 `extract_at`。
+/// 只有目标路径上的 `Float` 换成字符串 `"NaN"`，其余节点保持正常映射，
+/// 见 `extract_at`。目标节点以外的浮点不动，不影响其它字段的解码。
+fn to_float_probe_json(
+  v : @config.Value,
+  current : @config.KeyPath,
+  target : @config.KeyPath,
+) -> Json {
+  if same_key_path(current, target) {
+    return Json::string("NaN")
+  }
+  match v.kind {
+    @config.ValueKind::Array(items) => {
+      let out : Array[Json] = []
+      for i, item in items {
+        out.push(to_float_probe_json(item, current.add(i.to_string()), target))
+      }
+      Json::array(out)
+    }
+    @config.ValueKind::Table(table) => {
+      let obj = Map([], capacity=table.capacity())
+      for key, item in table {
+        obj[key] = to_float_probe_json(item, current.add(key), target)
+      }
+      Json::object(obj)
+    }
+    _ => to_json(v)
+  }
+}
+
+///|
+/// 只有目标路径上的 `Str` 换成标记串，其余节点保持正常映射，见 `extract_at`。
 ///
 /// 标记不能是 `"NaN"` / `"Infinity"` / `"-Infinity"`，否则浮点类型会照收。
 /// 标记里带换行，`Bytes::from_json` 只收可打印 ASCII 和 `\xHH`，也会拒绝它：
 /// 字符串来源不能因此变成字节串。
-fn to_str_probe_json(v : @config.Value) -> Json {
+fn to_str_probe_json(
+  v : @config.Value,
+  current : @config.KeyPath,
+  target : @config.KeyPath,
+) -> Json {
+  if same_key_path(current, target) {
+    return Json::string("__moonfig_string_probe__\n")
+  }
   match v.kind {
-    @config.ValueKind::Str(_) => Json::string("__moonfig_string_probe__\n")
-    @config.ValueKind::Array(items) => Json::array(items.map(to_str_probe_json))
+    @config.ValueKind::Array(items) => {
+      let out : Array[Json] = []
+      for i, item in items {
+        out.push(to_str_probe_json(item, current.add(i.to_string()), target))
+      }
+      Json::array(out)
+    }
     @config.ValueKind::Table(table) => {
       let obj = Map([], capacity=table.capacity())
       for key, item in table {
-        obj[key] = to_str_probe_json(item)
+        obj[key] = to_str_probe_json(item, current.add(key), target)
       }
       Json::object(obj)
     }
@@ -398,8 +448,13 @@ fn explain(
     Some(found) => found.kind.name()
     None => "unknown"
   }
-  if message.contains("number in string representation") {
-    // 结构体里写了 `Int64`：换个类型就能取，不是数据的问题
+  if message.contains("expected number in string representation") &&
+    actual == "Int" {
+    // 整数来源落进了 `Int64` / `UInt64` / `BigInt` 字段：换个类型就能取，
+    // 不是数据的问题。探针触发的同款报错说明来源不是整数（字符串、字节
+    // 串被标准库解析成了数字），按普通的类型不符报，别误导用户去换类型。
+    // `BigInt` 的解析失败是 "invalid number in string representation"，
+    // 本来就不进这个分支。
     return @config.ConfigError::ParseError(
       "key '\{key}' is a 64-bit integer: declare the struct field as Int64Text or use get_int",
     )

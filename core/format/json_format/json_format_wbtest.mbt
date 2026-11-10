@@ -92,6 +92,52 @@ test "Bytes are not extracted as String" {
 }
 
 ///|
+/// 只用来验证字节内容不会被标准库静默解析成数字
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct BytesNumberCfg {
+  v : Int64
+}
+
+///|
+pub extend BytesNumberCfg with @json.FromJson::{from_json}
+
+///|
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct BytesFloatCfg {
+  v : Double
+}
+
+///|
+pub extend BytesFloatCfg with @json.FromJson::{from_json}
+
+///|
+/// 字节内容恰好是数字字面量时，不能被标准库解析成整数
+test "Bytes with numeric content are not extracted as Int64" {
+  let message = try {
+    let _ : BytesNumberCfg = extract(Value::table({ "v": Value::bytes(b"5") }))
+    "no error"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'v': expected Int64, got Bytes")
+}
+
+///|
+/// 字节内容是 `"NaN"` 时也不能落进 `Double`：标准库只对字符串来源做这个
+/// 特判，但字节来源映射成的同样是字符串。
+test "Bytes with NaN content are not extracted as Double" {
+  let message = try {
+    let _ : BytesFloatCfg = extract(Value::table({ "v": Value::bytes(b"NaN") }))
+    "no error"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'v': expected Float, got Bytes")
+}
+
+///|
 /// `"NaN"` 这种特殊浮点字符串在 `String` 字段里仍然是字符串
 test "special float strings stay strings" {
   let got : NeedsHost = extract(Value::table({ "host": Value::str("NaN") }))
@@ -148,7 +194,9 @@ test "extract rejects float inside Int array" {
   let value = Value::table({
     "values": Value::array([Value::int(1L), Value::float(2.5)]),
   })
-  assert_true(has_float(value))
+  let float_paths : Array[@config.KeyPath] = []
+  collect_float_paths(value, @config.KeyPath::root(), float_paths)
+  assert_eq(float_paths.length(), 1)
   let message = try {
     let _ : IntArrayCfg = extract(value)
     "no error"

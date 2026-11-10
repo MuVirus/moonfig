@@ -99,6 +99,65 @@ struct RawUInt64Value {
 pub extend RawUInt64Value with @json.FromJson::{from_json}
 
 ///|
+/// 探针的失败不能掩盖后面的字段：BigInt 靠标准库解析字符串通过正常解码，
+/// 它在字符串探针里的失败曾经吞掉探针，让后面的 `"NaN"` 静默落进 Double。
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct BigIntDoubleValue {
+  big : @bigint.BigInt
+  d : Double
+}
+
+///|
+pub extend BigIntDoubleValue with @json.FromJson::{from_json}
+
+///|
+/// 字段顺序反过来也要一样拒绝：探针逐节点跑，和声明顺序无关
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct DoubleBigIntValue {
+  d : Double
+  big : @bigint.BigInt
+}
+
+///|
+pub extend DoubleBigIntValue with @json.FromJson::{from_json}
+
+///|
+/// `Char` 只收单字符字符串，同样会在字符串探针里先失败，曾经掩盖后面字段
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct CharDoubleValue {
+  c : Char
+  d : Double
+}
+
+///|
+pub extend CharDoubleValue with @json.FromJson::{from_json}
+
+///|
+/// 只用来验证单独的 BigInt 字段在严格类型下的行为
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct BigIntValue {
+  big : @bigint.BigInt
+}
+
+///|
+pub extend BigIntValue with @json.FromJson::{from_json}
+
+///|
+/// 只用来验证 Char 字段不被字符串探针误伤
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct CharValue {
+  c : Char
+}
+
+///|
+pub extend CharValue with @json.FromJson::{from_json}
+
+///|
 /// float提取成 `Int` 必须报错，不能静默截断成integer部分。
 test "JSON float cannot be extracted as Int" {
   let v = json_value(b"{\"value\": 3.14}")
@@ -278,4 +337,148 @@ test "Int64Text rejects string and float sources" {
     error => error.to_string()
   }
   assert_eq(integral_float_message, "key 'value': expected Int64, got Float")
+}
+
+///|
+/// BigInt 字段在字符串探针里先失败（标准库把它当数字解析），但它的失败
+/// 不能掩盖后面 Double 字段的 `"NaN"` ——曾经静默提取成功。
+test "BigInt field failure does not mask later Double string probe" {
+  let v = json_value(b"{\"big\": \"123\", \"d\": \"NaN\"}")
+  let message = try {
+    let got : BigIntDoubleValue = @json_format.extract(v)
+    "no error: big = \{got.big}, d = \{got.d}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'big': expected BigInt, got Str")
+}
+
+///|
+/// 字段顺序反过来也一样：探针按值树逐节点跑，`d` 的违规照常报出，
+/// 不会被 `big` 的探针失败掩盖。
+test "Double field violation is caught regardless of field order" {
+  let v = json_value(b"{\"d\": \"NaN\", \"big\": \"123\"}")
+  let message = try {
+    let got : DoubleBigIntValue = @json_format.extract(v)
+    "no error: d = \{got.d}, big = \{got.big}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'd': expected Float, got Str")
+}
+
+///|
+/// `Char` 只收单字符字符串，在探针里同样先失败；它后面的字段不能被掩盖。
+test "Char field failure does not mask later Double string probe" {
+  let v = json_value(b"{\"c\": \"x\", \"d\": \"NaN\"}")
+  let message = try {
+    let got : CharDoubleValue = @json_format.extract(v)
+    "no error: c = \{got.c}, d = \{got.d}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'd': expected Float, got Str")
+}
+
+///|
+/// 字符串来源也不能被标准库解析成 BigInt：和 Int64 / UInt64 同一类隐式转换。
+test "string cannot be extracted as BigInt" {
+  let v = json_value(b"{\"big\": \"123\"}")
+  let message = try {
+    let got : BigIntValue = @json_format.extract(v)
+    "no error: big = \{got.big}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'big': expected BigInt, got Str")
+}
+
+///|
+/// BigInt 字段遇数字来源走的是正常解码：保持 64 位的改法提示。
+test "BigInt field with number source keeps Int64Text guidance" {
+  let v = json_value(b"{\"big\": 123}")
+  let message = try {
+    let got : BigIntValue = @json_format.extract(v)
+    "no error: big = \{got.big}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(
+    message, "parse error: key 'big' is a 64-bit integer: declare the struct field as Int64Text or use get_int",
+  )
+}
+
+///|
+/// `Char` 是字符串形态的字段：单字符字符串照常提取，探针不能误伤。
+test "Char accepts single-character string source" {
+  let v = json_value(b"{\"c\": \"x\"}")
+  let got : CharValue = @json_format.extract(v)
+  assert_eq(got.c, 'x')
+}
+
+///|
+/// 探针要递归进容器：Map 值里的特殊浮点字符串一样不能落进 Double。
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct MapFloatValue {
+  m : Map[String, Double]
+}
+
+///|
+pub extend MapFloatValue with @json.FromJson::{from_json}
+
+///|
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct MapIntValue {
+  m : Map[String, Int32]
+}
+
+///|
+pub extend MapIntValue with @json.FromJson::{from_json}
+
+///|
+#derive(@json.FromJson)
+#warnings("-unused_field")
+struct ArrayDoubleValue {
+  arr : Array[Double]
+}
+
+///|
+pub extend ArrayDoubleValue with @json.FromJson::{from_json}
+
+///|
+test "string NaN inside Map values cannot become Double" {
+  let v = json_value(b"{\"m\": {\"k\": \"NaN\"}}")
+  let message = try {
+    let got : MapFloatValue = @json_format.extract(v)
+    "no error: m[k] = \{got.m["k"]}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'm.k': expected Float, got Str")
+}
+
+///|
+test "float inside Map values cannot be truncated into Int" {
+  let v = json_value(b"{\"m\": {\"k\": 3.14}}")
+  let message = try {
+    let got : MapIntValue = @json_format.extract(v)
+    "no error: m[k] = \{got.m["k"]}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'm.k': expected Int, got Float")
+}
+
+///|
+test "string NaN inside Array elements cannot become Double" {
+  let v = json_value(b"{\"arr\": [\"NaN\"]}")
+  let message = try {
+    let got : ArrayDoubleValue = @json_format.extract(v)
+    "no error: arr[0] = \{got.arr[0]}"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'arr.0': expected Float, got Str")
 }
