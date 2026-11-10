@@ -77,11 +77,12 @@ fn show_all_errors(cfg : Config) -> Unit raise {
 
 ///|
 /// 结构体：字段和配置一一对应
+#derive(@json.FromJson)
 struct DbCfg {
   host : String
   port : Int32
   user : String
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend DbCfg with @json.FromJson::{from_json}

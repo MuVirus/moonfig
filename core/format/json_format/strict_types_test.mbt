@@ -32,61 +32,68 @@ fn text_extract_result(v : @config.Value) -> String {
 }
 
 ///|
+#derive(@json.FromJson)
 struct IntValue {
   value : Int32
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend IntValue with @json.FromJson::{from_json}
 
 ///|
+#derive(@json.FromJson)
 struct TextValue {
   value : String
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend TextValue with @json.FromJson::{from_json}
 
 ///|
+#derive(@json.FromJson)
 struct FloatValue {
   value : Double
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend FloatValue with @json.FromJson::{from_json}
 
 ///|
+#derive(@json.FromJson)
 struct Int64Value {
   value : @json_format.Int64Text
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend Int64Value with @json.FromJson::{from_json}
 
 ///|
+#derive(@json.FromJson)
 struct UInt64Value {
   value : @json_format.UInt64Text
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend UInt64Value with @json.FromJson::{from_json}
 
 ///|
 /// 只用来验证直接写 `Int64` 时字符串来源也会被拒绝
+#derive(@json.FromJson)
 #warnings("-unused_field")
 struct RawInt64Value {
   value : Int64
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend RawInt64Value with @json.FromJson::{from_json}
 
 ///|
 /// 只用来验证直接写 `UInt64` 时字符串来源也会被拒绝
+#derive(@json.FromJson)
 #warnings("-unused_field")
 struct RawUInt64Value {
   value : UInt64
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend RawUInt64Value with @json.FromJson::{from_json}

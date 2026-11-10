@@ -2,6 +2,7 @@
 /// 库的错误类型。
 ///
 /// 唯一的体验标准：用户看到错误，能立刻知道**哪个键、期望什么、实际什么**。
+#derive(Eq, @debug.Debug)
 pub(all) suberror ConfigError {
   MissingKey(String) // 路径没被任何来源提供
   TypeMismatch(String, String, String) // 路径、期望、实际
@@ -11,7 +12,7 @@ pub(all) suberror ConfigError {
   InvalidValue(String, String, String) // 校验失败：路径、期望约束、实际
   UnknownKey(String) // 校验时发现不在允许列表里的键
   UnknownFormat(String, Array[String]) // 无法判断格式：名称、支持的后缀
-} derive(Eq, @debug.Debug)
+}
 
 ///|
 /// 报错时给人看的消息：哪个键、期望什么、实际什么。

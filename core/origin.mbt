@@ -3,13 +3,14 @@
 ///
 /// 合并规则按它排序，展示和错误消息也用它。具体是哪个文件、哪个环境变量，
 /// 由 `OriginSite::describe` 说明；`describe` 只给人看，不参与判断。
+#derive(Eq, @debug.Debug)
 pub(all) enum SourceKind {
   Memory
   File
   Env
   Cli
   Custom
-} derive(Eq, @debug.Debug)
+}
 
 ///|
 pub extend SourceKind with Eq::{equal, not_equal}

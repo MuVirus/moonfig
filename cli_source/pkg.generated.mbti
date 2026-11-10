@@ -26,10 +26,11 @@ pub fn CliSource::with_short_option(Self, String, String) -> Self
 pub fn CliSource::with_value_style(Self, CliValueStyle) -> Self
 pub impl @core.Source for CliSource
 
+#derive(Eq)
 pub(all) enum CliValueStyle {
   Equals
   Separate
-} derive(Eq)
+}
 pub fn CliValueStyle::equal(Self, Self) -> Bool
 pub fn CliValueStyle::not_equal(Self, Self) -> Bool
 

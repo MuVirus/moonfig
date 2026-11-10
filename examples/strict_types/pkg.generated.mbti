@@ -10,11 +10,13 @@ import {
 // Errors
 
 // Types and methods
-type NumericPort derive(@json.FromJson)
-pub fn NumericPort::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+#derive(@json.FromJson)
+type NumericPort
+pub fn NumericPort::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 
-type TextualPort derive(@json.FromJson)
-pub fn TextualPort::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+#derive(@json.FromJson)
+type TextualPort
+pub fn TextualPort::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 
 // Type aliases
 

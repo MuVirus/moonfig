@@ -4,6 +4,7 @@
 /// 整数一律 `Int64`：中间表示不走浮点，大整数才能原样活到用户手上。
 ///
 /// `Bytes` 是二进制数据的形状。文本格式不会产生它，CBOR 这类二进制格式会。
+#derive(Eq, @debug.Debug)
 pub(all) enum ValueKind {
   Null
   Bool(Bool)
@@ -13,7 +14,7 @@ pub(all) enum ValueKind {
   Bytes(Bytes)
   Array(Array[Value])
   Table(Map[String, Value])
-} derive(Eq, @debug.Debug)
+}
 
 ///|
 /// 配置值。

@@ -51,12 +51,13 @@ pub struct CliSource {
 
 ///|
 /// 长选项（以及短选项）的取值写法，一个来源只用一种。
+#derive(Eq)
 pub(all) enum CliValueStyle {
   /// 值跟在 `=` 后面：`--key=value`、`-p=value`（默认）
   Equals
   /// 值是下一个参数：`--key value`、`-p value`
   Separate
-} derive(Eq)
+}
 
 ///|
 pub extend CliValueStyle with Eq::{not_equal, equal}
@@ -419,14 +420,14 @@ fn parse_short(
   let mut cursor = index
   let mut pos = 0
   while pos < rest.length() {
-    let name = rest.view(start_offset=pos, end_offset=pos + 1).to_owned()
+    let name = rest.clamped_view(start=pos, end=pos + 1).to_owned()
     pos = pos + 1
     let short = match source.shorts.get(name) {
       Some(short) => short
       None => continue
     }
     let label = "-\{name}"
-    let remainder = rest.view(start_offset=pos)
+    let remainder = rest.clamped_view(start=pos)
     if !short.takes_value {
       if remainder.strip_prefix("=") is Some(_) {
         raise @config.ConfigError::ParseError(

@@ -18,20 +18,22 @@ using @jsonfmt {type JsonFormat, extract_from}
 
 ///|
 /// 端口声明成数字，只该接受数字来源
+#derive(@json.FromJson)
 struct NumericPort {
   port : Int32
   name : String
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend NumericPort with @json.FromJson::{from_json}
 
 ///|
 /// 端口声明成字符串，只该接受字符串来源
+#derive(@json.FromJson)
 struct TextualPort {
   port : String
   name : String
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend TextualPort with @json.FromJson::{from_json}

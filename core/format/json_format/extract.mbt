@@ -20,9 +20,10 @@
 /// ```
 ///
 /// 全精度的另一条路是按键取值：`get_int` 直接返回 `Int64`。
+#derive(Eq)
 pub struct Int64Text {
   value : Int64
-} derive(Eq)
+}
 
 ///|
 pub extend Int64Text with Eq::{equal, not_equal}
@@ -78,9 +79,10 @@ pub extend Int64Text with @json.ToJson::{to_json}
 
 ///|
 /// 结构体里的无符号 64 位整数字段，用法同 `Int64Text`。
+#derive(Eq)
 pub struct UInt64Text {
   value : UInt64
-} derive(Eq)
+}
 
 ///|
 pub extend UInt64Text with Eq::{equal, not_equal}

@@ -27,7 +27,7 @@ fn file_suffix(path : String) -> String? {
   let base = pieces[pieces.length() - 1]
   match base.rev_find(".") {
     Some(dot) => {
-      let suffix = base.view(start_offset=dot + 1).to_lower().to_owned()
+      let suffix = base.exact_view(start=dot + 1).to_lower().to_owned()
       if suffix.is_empty() {
         None
       } else {

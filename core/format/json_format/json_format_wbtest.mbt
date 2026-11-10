@@ -6,48 +6,53 @@ using @config {type ConfigError, type Value, type ValueKind}
 
 ///|
 /// 只用来验证提取失败会报错，不满足就炸
+#derive(@json.FromJson)
 struct NeedsHost {
   host : String
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend NeedsHost with @json.FromJson::{from_json}
 
 ///|
 /// 只用来验证byte string能提取到结构体的 `Bytes` 字段
+#derive(@json.FromJson)
 struct NeedsBlob {
   blob : Bytes
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend NeedsBlob with @json.FromJson::{from_json}
 
 ///|
 /// 嵌套结构，用来验证 MissingKey 会拼上父路径
+#derive(@json.FromJson)
 #warnings("-unused_field")
 struct NestedNeedsHost {
   db : NeedsHost
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend NestedNeedsHost with @json.FromJson::{from_json}
 
 ///|
 /// 整型array，用来验证浮点探针会递归进array
+#derive(@json.FromJson)
 #warnings("-unused_field")
 struct IntArrayCfg {
   values : Array[Int32]
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend IntArrayCfg with @json.FromJson::{from_json}
 
 ///|
 /// array字段，用来验证对象/array形状错误
+#derive(@json.FromJson)
 #warnings("-unused_field")
 struct StringListCfg {
   values : Array[String]
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend StringListCfg with @json.FromJson::{from_json}

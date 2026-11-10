@@ -25,10 +25,11 @@ fn json(text : String) -> StringSource {
 
 ///|
 /// 用户自己的类型只要 `derive(FromJson)`，库不生成任何代码
+#derive(@json.FromJson)
 struct DbCfg {
   host : String
   port : Int32
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend DbCfg with @json.FromJson::{from_json}
@@ -44,28 +45,31 @@ impl @config.Validate for DbCfg with fn validate(
 
 ///|
 /// 64 位字段写 `Int64Text`：core 的 `Int64` 只吃 JSON 字符串，和本库的integermap对不上
+#derive(@json.FromJson)
 struct BigCfg {
   id : @json_format.Int64Text
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend BigCfg with @json.FromJson::{from_json}
 
 ///|
 /// 只用来验证「直接写 Int64」时的报错，不参与别的测试
+#derive(@json.FromJson)
 #warnings("-unused_field")
 struct LegacyCfg {
   id : Int64
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend LegacyCfg with @json.FromJson::{from_json}
 
 ///|
 /// 浮点字段仍然要能正常提取；浮点探针不能把 `Double` 也拦掉
+#derive(@json.FromJson)
 struct RatioCfg {
   ratio : Double
-} derive(@json.FromJson)
+}
 
 ///|
 pub extend RatioCfg with @json.FromJson::{from_json}
