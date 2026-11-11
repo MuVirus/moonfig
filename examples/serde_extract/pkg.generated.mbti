@@ -1,0 +1,30 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/moonfig/examples/serde_extract"
+
+import {
+  "moonbit-community/serde.mbt",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct AppCfg {
+  name : String
+  retries : Int32
+  tags : Array[String]
+  db : DbCfg
+}
+pub impl @serde.mbt.Deserialize for AppCfg
+
+pub(all) struct DbCfg {
+  host : String
+  port : Int64
+  comment : String?
+}
+pub impl @serde.mbt.Deserialize for DbCfg
+
+// Type aliases
+
+// Traits

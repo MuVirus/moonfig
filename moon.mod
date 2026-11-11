@@ -43,4 +43,5 @@ import {
   "moonbit-community/yaml@0.0.8",
   "2515050242/cbor@0.1.2",
   "moonbitlang/x@0.5.5",
+  "moonbit-community/serde.mbt@0.3.1",
 }

@@ -1,0 +1,8 @@
+import {
+  "MuVirus/moonfig/core" @config,
+  "MuVirus/moonfig/core/format/json_format" @jsonfmt,
+  "MuVirus/moonfig/serde_bridge",
+  "moonbit-community/serde.mbt" @serde,
+}
+
+pkgtype(kind: "executable")

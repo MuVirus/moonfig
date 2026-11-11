@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/moonfig/serde_bridge"
+
+import {
+  "MuVirus/moonfig/core",
+  "moonbit-community/serde.mbt",
+}
+
+// Values
+pub fn[T : @serde.mbt.Deserialize] extract_serde(@core.Value) -> T raise @core.ConfigError
+
+pub fn[T : @serde.mbt.Deserialize] extract_serde_from(@core.Config, String) -> T raise @core.ConfigError
+
+pub fn[T : @serde.mbt.Deserialize] serde_field(@core.Getter, String) -> T raise @core.ConfigError
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

@@ -34,7 +34,7 @@ moonfig 是一个综合性配置库，面向多来源配置：把常见配置格
 
 ## 功能特性
 
-- **类型安全配置**：复用 MoonBit 原生 `derive(FromJson)` 派生机制，支持提取到结构体。本库负责配置值到 Json 的映射和错误翻译，并对容易混淆的类型做额外检查，无需额外的代码生成器。
+- **类型安全配置**：复用 MoonBit 原生 `derive(FromJson)` 派生机制，支持提取到结构体。需要字段标签、默认值或原生 64 位时，可改用手写的 `FromConfig`（逐字段内联 json 标签）。本库负责配置值到 Json 的映射和错误翻译，并对容易混淆的类型做额外检查，无需额外的代码生成器。
 - **严格类型转换**：取值与提取按声明类型进行检查，对常见的跨类型写法报错，避免隐式转换；唯一的加宽是整数→浮点（`get_float`），需要严格时用 `get_float_strict`。特定类型（如 `BigInt`、`自定义 FromJson` 等）则遵循其自身规则。
 - **多格式支持**：JSON、INI、dotenv、YAML、TOML、XML、CBOR 字节或自建的 `Value` 树都能作为来源，换格式不用改上层声明
 - **自动发现格式**：`Detector` 先认文件后缀，再看内容；无法判断时报 `UnknownFormat` 并列出候选后缀
@@ -373,6 +373,43 @@ struct OrderCfg {
 let order : OrderCfg = extract_from(cfg, "order")
 order.id.to_int64()   // 9007199254740993，超出 Double 精确范围也不丢
 ```
+
+### 手写字段标签：FromConfig
+
+需要给字段改配置键名、加默认值，或者直接读原生 64 位整数时，第二条路是手写 `FromConfig` 实现，json 标签内联在每个字段的调用点：
+
+```moonbit nocheck
+struct ServerCfg {
+  host : String
+  port : Int64
+  retry : Int32
+  comment : String?
+}
+
+impl @config.FromConfig for ServerCfg with fn from_config(get : @config.Getter) -> ServerCfg raise @config.ConfigError {
+  {
+    host: get.string("db-host"),          // 标签改名
+    port: get.int("port"),                // 原生 Int64，不用 Int64Text
+    retry: get.int32_or("retry", 3),      // 缺省值
+    comment: get.opt_string("comment"),   // 可选
+  }
+}
+
+let srv : ServerCfg = cfg.get_struct("server")
+```
+
+嵌套结构体如果用 `derive(FromJson)`，字段里一行委托，严格探针照常生效：`db: @jsonfmt.json_field(get, "db")`。标签全等于字段名又不需要默认值时，继续用上一节的 derive 写法（零样板）。详见 [extract.md](docs/design/extract.md)。
+
+### 结合 serde
+
+项目已经用 [serde](https://github.com/moonbit-community/serde.mbt)（`Deserialize` 实现，手写或由它的生成器生成均可）描述类型时，这些类型可以不经改动直接从配置提取：
+
+```moonbit nocheck
+let srv : Server = @serde_bridge.extract_serde(value)           // 整棵树
+let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // 按键
+```
+
+`FromConfig` 里也能按字段委托：`db: @serde_bridge.serde_field(get, "db")`。语义与 moonfig 的严格类型一致（字符串来源不变数字、浮点不截断），serde 的错误会翻译成 `ConfigError`（缺字段报 `MissingKey`，键名带前缀）。 可运行的完整示例见 [examples/serde_extract](examples/serde_extract/README.md)。
 
 ### 校验
 

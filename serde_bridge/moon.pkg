@@ -1,0 +1,11 @@
+import {
+  "MuVirus/moonfig/core" @config,
+  "moonbit-community/serde.mbt" @serde,
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/float",
+}
+
+import {
+  "MuVirus/moonfig/core" @config,
+  "moonbit-community/serde.mbt" @serde,
+} for "test"

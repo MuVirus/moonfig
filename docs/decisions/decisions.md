@@ -132,3 +132,44 @@
 >   数组当叶子，和 `origins()` 用同一套遍历，避免两套「什么算叶子」的口径。
 > - `origin` 是 `Origin?`：`Layer::untracked` 的来源没有可报告的对象，导出时保留 `None`，
 >   不伪造 label。`origins()` 仍只返回有来源的叶子。
+
+## 11. 手写 `FromConfig` 而不是 derive 标签
+
+> **2026-11 定稿：第二条结构体提取路径是手写 trait + `Getter`，不做 derive 也不做外部生成。**
+>
+> - derive(FromJson) 没有字段级定制：键名跟字段名锁死、没有默认值、64 位要包 `Int64Text`。
+>   MoonBit 不支持自定义 derive 和宏（`#derive` 限定内置 trait；用户属性 `#tool.attr(...)`
+>   会被编译器忽略，只能喂给解析源码的外部代码生成器），内置 derive 的
+>   `fields(x(rename="..."))` 官方标注 unstable 且无默认值——都不是可依赖的地基。
+> - 所以采用仓库已有的 `Validate` 模式：`pub(open) trait FromConfig`（`from_config(Getter)`），
+>   标签是调用点里的普通字符串参数。手写 impl 换 per-field 控制力， MoonBit 没有反射，
+>   字段和标签的对应关系只能在调用点建立，标签等于字段名时也要写一遍。
+> - `Getter` 与 `get_*` 同口径（严格类型、错误带完整前缀、`MissingKey`/`TypeMismatch`/
+>   范围 `ParseError`）。默认值只在**键缺失**时生效，键存在但类型不符照常报错——
+>   静默落默认会把配置错误藏起来。`opt_*` 把缺失和 `null` 都当 `None`。
+> - `Getter` 直接读 `Value`，不走 Json 往返、没有探针，性能比 derive 路径好；64 位
+>   字段原生可读，`Int64Text` 只属于 derive 路径。
+> - 两条路径用 `json_format.json_field` 在字段级混搭：手写结构体的某个字段可以一行
+>   委托给 derive(FromJson) 的子结构体，严格探针照常生效。分工：默认 derive(FromJson)，
+>   需要控制力才手写。
+
+## 12. serde 结合走独立包，不进 core
+
+> **2026-11 定稿：`serde_bridge` 是根包，moonfig core 不依赖 serde。**
+>
+> - serde（`moonbit-community/serde.mbt@0.3.1`）的 `Deserializer` 是格式后端 trait，
+>   moonfig 的 `Value` 树天然就是一个自描述格式——给 `Value` 写一个后端，任何
+>   serde 类型即可从配置提取，类型侧零改动（手写或 serde 生成器生成的
+>   `Deserialize` 都能消费）。
+> - 放根包而不是 `core/format/serde`：它不是文本格式（不产出 `Value`），是提取
+>   后端；也避免给 core 增加第三方依赖——core 保持零依赖，不用 serde 的用户
+>   不被牵连。moon.mod 引入 serde 后所有 moonfig 消费者的依赖树会多 serde
+>   及其 derive 生成器的依赖（parser/async），是引入该功能的固有代价。
+> - 语义对齐 serde 自带 `Value` 后端 + moonfig 严格性：无任何字符串→数字转换，
+>   bytes 只收 `Bytes` 节点，double 加宽整数。未知字段跳过（与 serde 及
+>   derive 路径一致，严格未知键请用 `Rule::allowed_keys`）。
+> - `DeError` → `ConfigError` 在入口翻译：`MissingField`→`MissingKey`、
+>   `InvalidType`→`TypeMismatch`、`InvalidValue`→`InvalidValue`，键名接前缀；
+>   不引入新的错误变体。
+> - serde 的字段协议按游标快照 Table：`skip_value` 只推游标不解析，未知键
+>   零成本跳过。

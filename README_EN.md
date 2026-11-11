@@ -34,7 +34,7 @@ moonfig is a comprehensive configuration library built for multi-source configur
 
 ## Features
 
-- **Type-safe configuration**: reuses MoonBit's native `derive(FromJson)` mechanism to extract into structs. The library maps config values to Json, translates errors and adds extra checks for easily confused types; no code generator is needed
+- **Type-safe configuration**: reuses MoonBit's native `derive(FromJson)` mechanism to extract into structs. For field tags, defaults or native 64-bit integers, use the handwritten `FromConfig` instead (json tags inline per field). The library maps config values to Json, translates errors and adds extra checks for easily confused types; no code generator is needed
 - **Strict conversions**: reads and extraction check the declared type and reject common cross-type spellings instead of converting implicitly; the only widening is integer→float (`get_float`), and `get_float_strict` turns even that off. Specific types (`BigInt`, a custom `FromJson`, and so on) follow their own rules
 - **Many formats**: JSON, INI, `.env`, YAML, TOML, XML, CBOR bytes, or a hand-built `Value` tree can each act as a source
 - **Format detection**: `Detector` checks the file suffix first, then the content; when neither decides it raises `UnknownFormat` listing the candidate suffixes
@@ -380,6 +380,43 @@ struct OrderCfg {
 let order : OrderCfg = extract_from(cfg, "order")
 order.id.to_int64()   // 9007199254740993, exact even beyond Double's range
 ```
+
+### Handwritten field tags: FromConfig
+
+When you need to rename a config key per field, add a default, or read a native 64-bit integer directly, the second path is a handwritten `FromConfig` impl with the json tag inline at each field:
+
+```moonbit nocheck
+struct ServerCfg {
+  host : String
+  port : Int64
+  retry : Int32
+  comment : String?
+}
+
+impl @config.FromConfig for ServerCfg with fn from_config(get : @config.Getter) -> ServerCfg raise @config.ConfigError {
+  {
+    host: get.string("db-host"),          // renamed tag
+    port: get.int("port"),                // native Int64, no Int64Text
+    retry: get.int32_or("retry", 3),      // default value
+    comment: get.opt_string("comment"),   // optional
+  }
+}
+
+let srv : ServerCfg = cfg.get_struct("server")
+```
+
+Nested structs that already use `derive(FromJson)` can be delegated in one line, strict probes still apply: `db: @jsonfmt.json_field(get, "db")`. When every tag equals the field name and no default is needed, stick with the derive style above (zero boilerplate). See [extract.md](docs/design/extract.md).
+
+### Integrate with serde
+
+If your project already describes types with [serde](https://github.com/moonbit-community/serde.mbt) (`Deserialize` impls, handwritten or produced by its generator), those types extract from configuration unchanged:
+
+```moonbit nocheck
+let srv : Server = @serde_bridge.extract_serde(value)           // whole tree
+let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // by key
+```
+
+`FromConfig` impls can delegate per field too: `db: @serde_bridge.serde_field(get, "db")`. Semantics match moonfig's strict typing (string sources never become numbers, floats are never truncated), and serde errors are translated into `ConfigError` (missing fields surface as `MissingKey` with the full key path). See [examples/serde_extract](examples/serde_extract/README.md) for a runnable example.
 
 ### Validate
 
