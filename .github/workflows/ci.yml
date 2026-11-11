@@ -39,6 +39,13 @@ jobs:
       - name: Check all targets
         run: moon check --target all --deny-warn
 
+      # `moon check` already runs the example's `dev_build` step; this catches a
+      # stale committed `types_derive.mbt` when that package was not rebuilt.
+      - name: Check generated serde code is up to date
+        run: |
+          moonx moonbit-community/serde.mbt@0.3.1/derive examples/serde_extract
+          git diff --exit-code -- examples/serde_extract
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -65,6 +72,7 @@ jobs:
           moon run examples/validate
           moon run examples/format_detect
           moon run examples/hot_reload
+          moon run examples/serde_extract
 
   test:
     name: Test

@@ -4,8 +4,8 @@
 /// 运行：`moon run examples/serde_extract`
 ///
 /// 类型用 serde 的 `#serde.derive(Deserialize)` 属性描述，`Deserialize`
-/// 由 serde 的生成器生成到 `types_derive.mbt`（已提交；改了类型后重跑
-/// `moonx moonbit-community/serde.mbt/derive examples/serde_extract` 即可）。
+/// 由 serde 的生成器生成到 `types_derive.mbt`（已提交；本包的 `moon.pkg`
+/// 里声明了 `dev_build`，`moon check` / `moon test` 会先自动重跑生成器）。
 /// moonfig 的 `Value` 树作为 serde 的一个格式后端参与提取——类型不感知
 /// 配置来源，配置不感知类型形状。
 

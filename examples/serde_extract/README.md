@@ -10,7 +10,7 @@ moon run examples/serde_extract
 
 ## 类型侧：属性 + 生成器
 
-类型用 serde 的用户属性描述形状，`Deserialize` 代码由 serde 的生成器生成（产物 `types_derive.mbt` 已提交，改了类型后重跑一次生成器即可）：
+类型用 serde 的用户属性描述形状，`Deserialize` 代码由 serde 的生成器生成。产物 `types_derive.mbt` 已提交，`moon.pkg` 里用 `rule` + `dev_build` 声明了生成步骤，所以 `moon check` / `moon test` 编译本包前会自动重跑生成器：
 
 ```moonbit
 #serde.derive(Deserialize)
@@ -30,11 +30,23 @@ pub(all) struct AppCfg {
 }
 ```
 
-再生成：
+对应的 `moon.pkg` 声明：
+
+```
+rule(
+  name: "serde-derive",
+  command: "moonx moonbit-community/serde.mbt@0.3.1/derive $input",
+)
+dev_build(rule: "serde-derive", input: "types.mbt", output: "types_derive.mbt")
+```
+
+版本与 `moon.mod` 里的 serde.mbt 依赖保持一致即可。不想依赖构建钩子时，也可以手动跑同一条命令：
 
 ```sh
-moonx moonbit-community/serde.mbt/derive examples/serde_extract
+moonx moonbit-community/serde.mbt@0.3.1/derive examples/serde_extract
 ```
+
+生成文件仍然要提交：pre-build 步骤只在包本身被构建时运行，下游把本模块当依赖使用时看到的是提交的内容。
 
 ## moonfig 侧：三个入口
 
