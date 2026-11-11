@@ -414,6 +414,28 @@ fn same_key_path(a : @config.KeyPath, b : @config.KeyPath) -> Bool {
 }
 
 ///|
+/// `FromConfig` 的组合点：把标签处的子树交给 `derive(FromJson)` 提取，
+/// 严格探针照常生效，错误路径接上 `Getter` 的完整前缀。
+///
+/// 嵌套结构体不需要逐字段手写：子结构体继续用 derive(FromJson)，字段里
+/// 一行委托，两条路径在字段级混搭。
+///
+/// ```mbt nocheck
+/// impl FromConfig for Server with fn from_config(get : Getter) -> Server raise ConfigError {
+///   {
+///     host: get.string("db-host"),
+///     db: @jsonfmt.json_field(get, "db"), // DbCfg 用 derive(FromJson) 提取
+///   }
+/// }
+/// ```
+pub fn[T : @json.FromJson] json_field(
+  g : @config.Getter,
+  tag : String,
+) -> T raise @config.ConfigError {
+  extract_at(g.value(tag), g.field_path(tag).to_string())
+}
+
+///|
 /// 探针报出来的期望类型是不是整数。只拦这类错误，避免误伤自定义浮点包装。
 fn is_integer_name(name : String) -> Bool {
   match name {

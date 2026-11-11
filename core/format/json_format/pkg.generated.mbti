@@ -13,6 +13,8 @@ pub fn[T : @json.FromJson] extract_from(@core.Config, String) -> T raise @core.C
 
 pub fn[T : @json.FromJson + @core.Validate] extract_validated_from(@core.Config, String) -> T raise @core.ConfigError
 
+pub fn[T : @json.FromJson] json_field(@core.Getter, String) -> T raise @core.ConfigError
+
 pub fn to_json(@core.Value) -> @json.Json
 
 // Errors

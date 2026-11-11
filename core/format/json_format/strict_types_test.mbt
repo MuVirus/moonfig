@@ -482,3 +482,60 @@ test "string NaN inside Array elements cannot become Double" {
   }
   assert_eq(message, "key 'arr.0': expected Float, got Str")
 }
+
+///|
+/// json_field 的组合测试：derive(FromJson) 的子结构体作为 FromConfig 的一个字段
+#derive(@json.FromJson)
+struct DerivedDb {
+  host : String
+}
+
+///|
+pub extend DerivedDb with @json.FromJson::{from_json}
+
+///|
+struct MixedServer {
+  host : String
+  db : DerivedDb
+}
+
+///|
+impl @config.FromConfig for MixedServer with fn from_config(
+  get : @config.Getter,
+) -> MixedServer raise @config.ConfigError {
+  { host: get.string("db-host"), db: @json_format.json_field(get, "db"), }
+}
+
+///|
+test "json_field delegates to derive(FromJson) with prefixed errors" {
+  let v = json_value(b"{\"db-host\": \"h\", \"db\": {\"host\": \"d\"}}")
+  let got : MixedServer = v.to_struct()
+  assert_eq(got.host, "h")
+  assert_eq(got.db.host, "d")
+
+  let bad = json_value(b"{\"db-host\": \"h\", \"db\": {}}")
+  let message = try {
+    let _ : MixedServer = bad.to_struct()
+    "no error"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "missing key 'db.host': no source provides it")
+}
+
+///|
+/// json_field 也走严格探针：子树里的字符串来源照样不能变数字
+test "json_field keeps strict probes on the delegated subtree" {
+  let v = json_value(b"{\"db-host\": \"h\", \"db\": {\"host\": \"NaN\"}}")
+  let got : MixedServer = v.to_struct()
+  assert_eq(got.db.host, "NaN")
+
+  let numeric = json_value(b"{\"db-host\": \"h\", \"db\": {\"host\": 5}}")
+  let message = try {
+    let _ : MixedServer = numeric.to_struct()
+    "no error"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "key 'db.host': expected Str, got Int")
+}

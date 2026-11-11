@@ -54,6 +54,8 @@ pub fn Config::get_float(Self, String) -> Double raise ConfigError
 pub fn Config::get_float_strict(Self, String) -> Double raise ConfigError
 pub fn Config::get_int(Self, String) -> Int64 raise ConfigError
 pub fn Config::get_string(Self, String) -> String raise ConfigError
+pub fn[T : FromConfig] Config::get_struct(Self, String) -> T raise ConfigError
+pub fn[T : FromConfig + Validate] Config::get_struct_validated(Self, String) -> T raise ConfigError
 pub fn Config::get_value(Self, String) -> Value raise ConfigError
 pub fn Config::get_value_at(Self, KeyPath) -> Value raise ConfigError
 pub fn Config::new() -> Self
@@ -71,6 +73,41 @@ pub struct Entry {
 pub fn Entry::origin(Self) -> Origin?
 pub fn Entry::path(Self) -> KeyPath
 pub fn Entry::value(Self) -> Value
+
+pub struct Getter {
+  // private fields
+}
+pub fn Getter::bool(Self, String) -> Bool raise ConfigError
+pub fn Getter::bool_or(Self, String, Bool) -> Bool raise ConfigError
+pub fn Getter::bools(Self, String) -> Array[Bool] raise ConfigError
+pub fn Getter::bytes(Self, String) -> Bytes raise ConfigError
+pub fn Getter::bytes_or(Self, String, Bytes) -> Bytes raise ConfigError
+pub fn Getter::field_path(Self, String) -> KeyPath
+pub fn Getter::float(Self, String) -> Double raise ConfigError
+pub fn Getter::float_or(Self, String, Double) -> Double raise ConfigError
+pub fn Getter::float_strict(Self, String) -> Double raise ConfigError
+pub fn Getter::floats(Self, String) -> Array[Double] raise ConfigError
+pub fn Getter::int(Self, String) -> Int64 raise ConfigError
+pub fn Getter::int32(Self, String) -> Int32 raise ConfigError
+pub fn Getter::int32_or(Self, String, Int32) -> Int32 raise ConfigError
+pub fn Getter::int_or(Self, String, Int64) -> Int64 raise ConfigError
+pub fn Getter::ints(Self, String) -> Array[Int64] raise ConfigError
+pub fn[T : FromConfig] Getter::nested(Self, String) -> T raise ConfigError
+pub fn Getter::opt_bool(Self, String) -> Bool? raise ConfigError
+pub fn Getter::opt_bytes(Self, String) -> Bytes? raise ConfigError
+pub fn Getter::opt_float(Self, String) -> Double? raise ConfigError
+pub fn Getter::opt_int(Self, String) -> Int64? raise ConfigError
+pub fn Getter::opt_int32(Self, String) -> Int32? raise ConfigError
+pub fn Getter::opt_string(Self, String) -> String? raise ConfigError
+pub fn Getter::opt_uint64(Self, String) -> UInt64? raise ConfigError
+pub fn Getter::opt_value(Self, String) -> Value? raise ConfigError
+pub fn Getter::string(Self, String) -> String raise ConfigError
+pub fn Getter::string_or(Self, String, String) -> String raise ConfigError
+pub fn Getter::strings(Self, String) -> Array[String] raise ConfigError
+pub fn[T : FromConfig] Getter::structs(Self, String) -> Array[T] raise ConfigError
+pub fn Getter::uint64(Self, String) -> UInt64 raise ConfigError
+pub fn Getter::uint64_or(Self, String, UInt64) -> UInt64 raise ConfigError
+pub fn Getter::value(Self, String) -> Value raise ConfigError
 
 pub struct KeyPath {
   // private fields
@@ -170,6 +207,7 @@ pub fn Value::null() -> Self
 pub fn Value::str(String) -> Self
 pub fn Value::table(Map[String, Self]) -> Self
 pub fn Value::to_repr(Self) -> @debug.Repr
+pub fn[T : FromConfig] Value::to_struct(Self) -> T raise ConfigError
 pub fn Value::with_origin(Self, &OriginSite) -> Self
 pub impl Eq for Value
 pub impl @debug.Debug for Value
@@ -198,6 +236,10 @@ pub(open) trait Format {
   fn suffixes(Self) -> Array[String] = _
   fn sniff(Self, Bytes) -> Bool = _
   fn decode_path(Self, String, Bytes) -> Value raise ConfigError = _
+}
+
+pub(open) trait FromConfig {
+  fn from_config(Getter) -> Self raise ConfigError
 }
 
 pub(open) trait Locator {
