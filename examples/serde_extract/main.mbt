@@ -40,21 +40,14 @@ fn extract_app(text : String) -> String {
 }
 
 ///|
-/// 数组字段单独打印（Array 的 Show 已弃用，不直接插值）
+/// 数组字段单独打印：`Array::join` 拼成紧凑文本（直接插值会用到已弃用的 Show）
 fn extract_tags(text : String) -> String {
   try {
     let cfg = Config::new()
       .add(StringSource::new(text, JsonFormat::new()))
       .build()
     let app : AppCfg = @serde_bridge.extract_serde_from(cfg, "app")
-    let mut out = "["
-    for i, tag in app.tags {
-      if i > 0 {
-        out = out + ", "
-      }
-      out = out + tag
-    }
-    out + "]"
+    "[\{app.tags.join(", ")}]"
   } catch {
     e => "error: \{e}"
   }
@@ -62,16 +55,56 @@ fn extract_tags(text : String) -> String {
 
 ///|
 fn main {
-  let good = "{\"app\":{\"name\":\"api\",\"retries\":5,\"tags\":[\"edge\",\"eu\"],\"db\":{\"db-host\":\"localhost\",\"port\":5432,\"comment\":\"primary\"}}}"
-  let no_comment = "{\"app\":{\"name\":\"api\",\"retries\":5,\"tags\":[],\"db\":{\"db-host\":\"localhost\",\"port\":5432}}}"
-  let missing_host = "{\"app\":{\"name\":\"api\",\"retries\":5,\"tags\":[],\"db\":{\"port\":5432}}}"
-  let wrong_type = "{\"app\":{\"name\":\"api\",\"retries\":\"5\",\"tags\":[],\"db\":{\"db-host\":\"h\",\"port\":5432}}}"
-  let big_port = "{\"app\":{\"name\":\"api\",\"retries\":5,\"tags\":[],\"db\":{\"db-host\":\"h\",\"port\":9007199254740993}}}"
+  let good =
+    #|{
+    #|  "app": {
+    #|    "name": "api",
+    #|    "retries": 5,
+    #|    "tags": ["edge", "eu"],
+    #|    "db": { "db-host": "localhost", "port": 5432, "comment": "primary" }
+    #|  }
+    #|}
+  let no_comment =
+    #|{
+    #|  "app": {
+    #|    "name": "api",
+    #|    "retries": 5,
+    #|    "tags": [],
+    #|    "db": { "db-host": "localhost", "port": 5432 }
+    #|  }
+    #|}
+  let missing_host =
+    #|{
+    #|  "app": {
+    #|    "name": "api",
+    #|    "retries": 5,
+    #|    "tags": [],
+    #|    "db": { "port": 5432 }
+    #|  }
+    #|}
+  let wrong_type =
+    #|{
+    #|  "app": {
+    #|    "name": "api",
+    #|    "retries": "5",
+    #|    "tags": [],
+    #|    "db": { "db-host": "h", "port": 5432 }
+    #|  }
+    #|}
+  let big_port =
+    #|{
+    #|  "app": {
+    #|    "name": "api",
+    #|    "retries": 5,
+    #|    "tags": [],
+    #|    "db": { "db-host": "h", "port": 9007199254740993 }
+    #|  }
+    #|}
 
   println("== serde 类型直接从配置提取 ==")
   println("完整配置     -> \{extract_app(good)}") // name=api retries=5 db=localhost:5432 comment=primary
   println("缺失可选字段 -> \{extract_app(no_comment)}") // comment 缺失，None
-  println("缺必填字段   -> \{extract_app(missing_host)}") // error: missing key 'app.db-host'
+  println("缺必填字段   -> \{extract_app(missing_host)}") // error: missing key 'app.db.db-host'
   println("类型写错     -> \{extract_app(wrong_type)}") // error: key 'app.retries': expected Int, got Str
   println("大整数不丢   -> \{extract_app(big_port)}") // port=9007199254740993，超出 Double 精确范围也按原文还原
   println("")
