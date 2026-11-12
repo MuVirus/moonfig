@@ -7,6 +7,7 @@ target
 
 # 代理工具的本地运行状态（goal ledger / locks / 快照）
 .pi/
+.zcode/
 
 # 上游参考源码（只读参考，不入库）
 _ref/
