@@ -494,6 +494,7 @@ The full item list and the trade-offs behind them live in
 - `moon doc` — generate the API reference into `_build/doc/`
 - `moon doc --serve` — start a local preview (http://127.0.0.1:3000 by default)
 - [`examples/`](examples/README.md) — seven runnable examples, with their commands listed in the index
+- [`benchmarks/`](benchmarks/README.md) — performance comparison of the three struct extraction paths, run with `moon bench --release benchmarks`
 - `moon coverage analyze -- -f summary` — run the tests and print a coverage summary
 - [docs/AGENTS.md](docs/AGENTS.md) — documentation index and writing rules
 - [docs/design/cli-args.md](docs/design/cli-args.md) — command line parsing design

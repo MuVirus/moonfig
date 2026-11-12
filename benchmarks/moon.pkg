@@ -1,0 +1,25 @@
+import {
+  "moonbit-community/serde.mbt" @serde,
+}
+
+import {
+  "MuVirus/moonfig/core" @config,
+  "MuVirus/moonfig/core/format/json_format" @jsonfmt,
+  "MuVirus/moonfig/serde_bridge",
+  "moonbitlang/core/bench",
+  "moonbitlang/core/json",
+} for "test"
+
+// `serde_types_derive.mbt` is generated: `moon check` / `moon bench` run the
+// generator before compiling this package. Keep the version in sync with the
+// serde.mbt dependency in `moon.mod`.
+rule(
+  name: "serde-derive",
+  command: "moonx moonbit-community/serde.mbt@0.3.1/derive $input",
+)
+
+dev_build(
+  rule: "serde-derive",
+  input: "serde_types.mbt",
+  output: "serde_types_derive.mbt",
+)

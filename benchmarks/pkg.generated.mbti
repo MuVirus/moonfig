@@ -1,0 +1,30 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/moonfig/benchmarks"
+
+import {
+  "moonbit-community/serde.mbt",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct SerdeApp {
+  name : String
+  retries : Int32
+  tags : Array[String]
+  db : SerdeDb
+}
+pub impl @serde.mbt.Deserialize for SerdeApp
+
+pub(all) struct SerdeDb {
+  host : String
+  port : Int32
+  comment : String?
+}
+pub impl @serde.mbt.Deserialize for SerdeDb
+
+// Type aliases
+
+// Traits

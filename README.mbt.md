@@ -485,6 +485,7 @@ try {
 - `moon doc` —— 生成 API 文档到 `_build/doc/`
 - `moon doc --serve` —— 启动本地预览（默认 http://127.0.0.1:3000）
 - [`examples/`](examples/README.md) —— 7 个可运行示例，索引里列了各自的运行命令
+- [`benchmarks/`](benchmarks/README.md) —— 三条结构体提取路径的性能对比，`moon bench --release benchmarks`
 - `moon coverage analyze -- -f summary` —— 跑测试并打印覆盖率摘要
 - [docs/AGENTS.md](docs/AGENTS.md) —— 文档索引与写作规范
 - [docs/design/cli-args.md](docs/design/cli-args.md) —— 命令行参数的解析设计
