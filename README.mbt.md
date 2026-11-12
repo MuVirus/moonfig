@@ -398,7 +398,7 @@ impl @config.FromConfig for ServerCfg with fn from_config(get : @config.Getter) 
 let srv : ServerCfg = cfg.get_struct("server")
 ```
 
-嵌套结构体如果用 `derive(FromJson)`，字段里一行委托，严格探针照常生效：`db: @jsonfmt.json_field(get, "db")`。标签全等于字段名又不需要默认值时，继续用上一节的 derive 写法（零样板）。详见 [extract.md](docs/design/extract.md)。
+嵌套结构体如果用 `derive(FromJson)`，字段里一行委托，严格探针照常生效：`db: @jsonfmt.json_field(get, "db")`。标签全等于字段名又不需要默认值时，继续用上一节的 derive 写法（零样板）。详见 [extract.md](docs/design/extract.md)，可运行的完整示例见 [examples/from_config](examples/from_config/README.md)。
 
 ### 结合 serde
 
@@ -484,7 +484,7 @@ try {
 
 - `moon doc` —— 生成 API 文档到 `_build/doc/`
 - `moon doc --serve` —— 启动本地预览（默认 http://127.0.0.1:3000）
-- [`examples/`](examples/README.md) —— 5 个可运行示例，索引里列了各自的运行命令
+- [`examples/`](examples/README.md) —— 7 个可运行示例，索引里列了各自的运行命令
 - `moon coverage analyze -- -f summary` —— 跑测试并打印覆盖率摘要
 - [docs/AGENTS.md](docs/AGENTS.md) —— 文档索引与写作规范
 - [docs/design/cli-args.md](docs/design/cli-args.md) —— 命令行参数的解析设计

@@ -13,6 +13,7 @@ moon update
 | [validate](validate/README.md) | 按键规则表、结构体 `Validate`、未知键和自定义规则 | `moon run examples/validate` |
 | [format_detect](format_detect/README.md) | 后缀优先、内容兜底的格式发现，以及 `UnknownFormat` | `moon run examples/format_detect` |
 | [hot_reload](hot_reload/README.md) | 轮询文件变化、坏配置保留旧快照、修好后继续更新 | `moon run examples/hot_reload` |
+| [from_config](from_config/README.md) | 手写 `FromConfig`：字段改名、默认值、原生 64 位、嵌套混搭 | `moon run examples/from_config` |
 | [serde_extract](serde_extract/README.md) | serde 类型（`#serde.derive` + 生成器）直接从配置提取 | `moon run examples/serde_extract` |
 
 所有示例都能直接运行到结束，不依赖交互输入；输出写在各目录的 `README.md` 里，方便对照。

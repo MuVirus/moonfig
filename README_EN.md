@@ -405,7 +405,7 @@ impl @config.FromConfig for ServerCfg with fn from_config(get : @config.Getter) 
 let srv : ServerCfg = cfg.get_struct("server")
 ```
 
-Nested structs that already use `derive(FromJson)` can be delegated in one line, strict probes still apply: `db: @jsonfmt.json_field(get, "db")`. When every tag equals the field name and no default is needed, stick with the derive style above (zero boilerplate). See [extract.md](docs/design/extract.md).
+Nested structs that already use `derive(FromJson)` can be delegated in one line, strict probes still apply: `db: @jsonfmt.json_field(get, "db")`. When every tag equals the field name and no default is needed, stick with the derive style above (zero boilerplate). See [extract.md](docs/design/extract.md), or [examples/from_config](examples/from_config/README.md) for a runnable example.
 
 ### Integrate with serde
 
@@ -493,7 +493,7 @@ The full item list and the trade-offs behind them live in
 
 - `moon doc` — generate the API reference into `_build/doc/`
 - `moon doc --serve` — start a local preview (http://127.0.0.1:3000 by default)
-- [`examples/`](examples/README.md) — five runnable examples, with their commands listed in the index
+- [`examples/`](examples/README.md) — seven runnable examples, with their commands listed in the index
 - `moon coverage analyze -- -f summary` — run the tests and print a coverage summary
 - [docs/AGENTS.md](docs/AGENTS.md) — documentation index and writing rules
 - [docs/design/cli-args.md](docs/design/cli-args.md) — command line parsing design
