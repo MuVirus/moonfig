@@ -1,28 +1,29 @@
-# docs 指南
+# docs guide
 
-`docs/` 放项目的说明文档。代码怎么写见根目录 `AGENTS.md`；写作与审查规则见
-`write-docs` skill。
+`docs/` holds the project's documentation. For how to write code, see the root `AGENTS.md`; for writing and review rules, see the `write-docs` skill.
 
-## 目录
+## Directories
 
-- `AGENTS.md` —— 本文件：文档放在哪、索引
-- `design/` —— 设计文档，讲「为什么这样定」
-  - [`design.md`](design/design.md) —— 主线与核心数据模型
-  - [`sources.md`](design/sources.md) —— Source / Format 接口、core 边界、package 划分、来源追踪、第三方解析器的取舍
-  - [`cli-args.md`](design/cli-args.md) —— 命令行参数：取值风格、短选项登记、数组声明、位置映射、冲突与来源标签
-  - [`extract.md`](design/extract.md) —— 提取到结构体、整数映射、错误消息
-  - [`validate.md`](design/validate.md) —— 校验：按键规则表、结构体 `Validate`、未知键、错误
-  - [`format-detect.md`](design/format-detect.md) —— 自动发现格式：后缀优先、内容判断、候选顺序
-  - [`hot-reload.md`](design/hot-reload.md) —— 热更新：快照替换、文件轮询、失败保留旧配置
-- `decisions/` —— 决策记录，讲「当时为什么这么定」
-  - [`decisions.md`](decisions/decisions.md) —— 包名、跨包方法、Bytes、JSON 数值、CBOR 选型、来源追踪（`OriginSite` / `KeyPath`）与合并规则、外部 Source、字符串比较、校验
-- `plan/` —— 计划文档，讲「接下来做什么」
-  - [`roadmap.md`](plan/roadmap.md) —— 待实现的方向、进度
-- `conventions/` —— 项目规范，讲「怎么做」
-  - [`testing.md`](conventions/testing.md) —— 测试写法
+- `guides/` — task-oriented steps, covering "how to accomplish X". For the file index, see
+  [`guides/AGENTS.md`](guides/AGENTS.md).
+- `design/` — design documents, covering "why it is designed this way". For the file index, see
+  [`design/AGENTS.md`](design/AGENTS.md).
+- `decisions/` — decision records, covering "why it was decided that way at the time". For the file index, see
+  [`decisions/AGENTS.md`](decisions/AGENTS.md).
+- `plan/` — planning documents, covering "what comes next". For the file index, see
+  [`plan/AGENTS.md`](plan/AGENTS.md).
+- `conventions/` — project conventions, covering "how to do things". For the file index, see
+  [`conventions/AGENTS.md`](conventions/AGENTS.md).
+- `reference/` — lookup tables for concrete shapes, covering "what exactly is it". For the file index, see
+  [`reference/AGENTS.md`](reference/AGENTS.md).
 
-## 规则
+## Rules
 
-- 一份设计一个文件，按主题命名；决策记录写在 `decisions/`。
-- 用户怎么用写在 `README.mbt.md` / `README_EN.md`。
-- 新增文档后在本文件的目录里登记。
+- This file registers only direct subdirectories and their responsibilities; individual files are registered in the `AGENTS.md` of the directory they belong to.
+- Adding a subdirectory: add a line in this file, and create an `AGENTS.md` in that directory.
+- Adding a file: register it in the `AGENTS.md` of its directory first, then write the content.
+- User-facing usage goes in `README.mbt.md` / `README_ZH.md`; task steps go in `guides/`; design trade-offs go in
+  `design/`.
+- The human-facing entry point is [`README.md`](README.md): reading paths, core concepts, and the mapping from code areas to docs.
+- English is authoritative. Every primary `.md` under `docs/` has a Chinese `.zh.md` copy next to it; `.zh.md` copies are not registered in the per-directory index.
+- A change that alters a public API, an error message or user-visible behavior updates the affected docs in the same change, and the PR / commit says which ones. Error message text lives only in [`reference/errors.md`](reference/errors.md).

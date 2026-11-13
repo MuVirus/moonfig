@@ -1,6 +1,12 @@
-# 提取到结构体
+# Extraction into structs
 
-## 1. 接口
+> **Conclusion**: `FromConfig` is the default extraction path; `derive(FromJson)` and `serde_bridge` are optional adapters.
+> **Authority**: Normative — the type mapping and error translation of the three paths follow this document; signatures follow `.mbti`.
+> **Out of scope**: Choice steps are in [choose-extraction.md](../guides/choose-extraction.md); history is in [decisions.md](../decisions/decisions.md).
+
+## 1. Interface
+
+Default extraction goes through `FromConfig` (see section 3). Below are the entry points of the `derive(FromJson)` adapter:
 
 ```moonbit
 pub fn[T : FromJson] extract(v : Value) -> T raise ConfigError
@@ -8,30 +14,30 @@ pub fn[T : FromJson] extract_from(cfg : Config, path : String) -> T raise Config
 pub fn[T : FromJson + Validate] extract_validated_from(cfg : Config, path : String) -> T raise ConfigError
 ```
 
-`extract` 提取整棵树，`extract_from` 先按键取子树再提取；后者是自由函数，因为方法不能跨 package（见 [decisions.md](../decisions/decisions.md#2-方法不能跨包)）。`extract_validated_from` 在提取后调用结构体自己的 `Validate`，见 [validate.md](validate.md)。
+`extract` extracts the whole tree, `extract_from` first takes the subtree by key and then extracts; the latter is a free function because methods cannot cross packages (see [decisions.md](../decisions/decisions.md#2-methods-cannot-cross-packages)). `extract_validated_from` calls the struct's own `Validate` after extraction, see [validate.md](validate.md).
 
-实现主线是 `@json.from_json(to_json(v))`，但整数映射有一个绕不过去的矛盾：
+The implementation main line is `@json.from_json(to_json(v))`, but integer mapping has one unavoidable contradiction:
 
-| 字段类型 | MoonBit 标准库的 `from_json` 只认 |
+| Field type | What `from_json` in the MoonBit standard library accepts |
 |---|---|
-| `Int` / `Int32` | `Json::Number`（±2^31 范围检查） |
-| `Int64` / `UInt64` | `Json::String`（只吃字符串） |
+| `Int` / `Int32` | `Json::Number` (range-checked to ±2^31) |
+| `Int64` / `UInt64` | `Json::String` (strings only) |
 
-`extract[T : FromJson]` 只有值级约束，看不到字段类型，所以一棵 Json 树不可能同时满足两者。取舍是：**统一映射成数字**，64 位字段用包装类型。
+`extract[T : FromJson]` only has a value-level constraint and cannot see field types, so one Json tree cannot satisfy both. The trade-off: **map everything to numbers**, and use wrapper types for 64-bit fields.
 
-标准库的 `Int::from_json` 对数字只做范围检查，`3.14` 会被 `to_int()` 截断成 `3`。`extract` 在正常解码成功后，如果原值树里有浮点，会再用一棵把所有浮点换成字符串 `"NaN"` 的探针树解一次：`Double` / `Float` 接受 `"NaN"`，整数类型不接受，因此能定位到「浮点想进整数字段」并报 `TypeMismatch`。没有浮点的配置不会多跑这一遍，`Double` 字段仍返回原值，不受探针影响。
+The standard library's `Int::from_json` only range-checks numbers, so `3.14` is truncated by `to_int()` to `3`. After a successful normal decode, if the original value tree contains a float, `extract` decodes once more with a probe tree that turns every float into the string `"NaN"`: `Double` / `Float` accept `"NaN"`, integer types do not, so it can locate "a float trying to enter an integer field" and raise `TypeMismatch`. Configs without floats skip this extra pass, and `Double` fields still return the original value, unaffected by the probe.
 
-JSON 解码打开了 `preserve_number_repr=true`，所以 `1.0`、`1e2`、`-0.0` 这些「值是整数、写法是浮点」的数字也保持 `Float`，同样会被探针拦住，不会因为数值完整就绕过整数字段检查。
+JSON decoding sets `preserve_number_repr=true`, so numbers like `1.0`, `1e2` and `-0.0` whose "value is integer but spelling is float" also stay `Float`, are caught by the probe too, and do not bypass the integer field check just because the value is integral.
 
-字符串这一侧也要补探测，因为标准库有些 `FromJson` 会把字符串当成别的形状：
+The string side needs probing as well, because some standard-library `FromJson` impls treat strings as other shapes:
 
-| 标准库行为 | 问题 | 探针处理 |
+| Standard-library behaviour | Problem | Probe handling |
 |---|---|---|
-| `Double` / `Float` 接受字符串 `"NaN"`、`"Infinity"`、`"-Infinity"` | 字符串来源变成浮点 | 把所有 `Str` 换成普通标记再解一次，报期望 `Float` 就翻成 `TypeMismatch` |
-| `Int64` / `UInt64` 直接解析字符串 | 字符串来源变成 64 位整数，绕过 `Int64Text` | 同上，报期望 `Int64` / `UInt64` 就翻成 `TypeMismatch` |
-| `Bytes` 字段只接受字符串 | 字符串来源变成字节串 | 标记里带换行，`Bytes::from_json` 会拒绝它 |
+| `Double` / `Float` accept the strings `"NaN"`, `"Infinity"`, `"-Infinity"` | a string origin becomes a float | replace every `Str` with an ordinary marker and decode again; if the expected type is `Float`, translate to `TypeMismatch` |
+| `Int64` / `UInt64` parse strings directly | a string origin becomes a 64-bit integer, bypassing `Int64Text` | same as above; if the expected type is `Int64` / `UInt64`, translate to `TypeMismatch` |
+| `Bytes` fields accept only strings | a string origin becomes a byte string | the marker contains a newline, which `Bytes::from_json` rejects |
 
-反方向也有一个坑：`Bytes` 和 `Str` 都映射成 `Json::String`，正常解码分不出。`extract` 逐个把 `Bytes` 节点换成一个非字符串值再解一次：字节字段会报期望 `Bytes`（合法），字符串字段会报期望 `String`，说明字节来源被当成了字符串，翻成 `TypeMismatch`。换成非字符串值而不是 `null`，是为了避免可选类型把 `null` 当成缺省值直接放过。这些探针只在树里出现对应形状时运行，纯字符串 / 纯整数配置不多跑。
+The reverse direction has a pitfall too: `Bytes` and `Str` both map to `Json::String`, so a normal decode cannot tell them apart. `extract` replaces each `Bytes` node with a non-string value and decodes again, one at a time: a bytes field then reports an expectation of `Bytes` (fine), while a string field reports an expectation of `String`, showing that a bytes origin was taken for a string, and that is translated to `TypeMismatch`. Replacing with a non-string value rather than `null` avoids optional types treating `null` as the default and letting it pass. These probes run only when the corresponding shape appears in the tree, so pure-string or pure-integer configs skip them.
 
 | ValueKind | → Json |
 |---|---|
@@ -39,102 +45,103 @@ JSON 解码打开了 `preserve_number_repr=true`，所以 `1.0`、`1e2`、`-0.0`
 | `Float` | `Json::number` |
 | `Bool` | `Json::bool` |
 | `Str` | `Json::string` |
-| `Bytes` | `Json::string(...)`，走标准库的字节编码 |
+| `Bytes` | `Json::string(...)`, using the standard library's byte encoding |
 | `Null` | `Json::null` |
-| `Array` / `Table` | 递归 |
+| `Array` / `Table` | recursive |
 
-`repr` 是标准库自己的字段：`Json::stringify` 优先写它，所以 `to_json(Value::int(9007199254740993L)).stringify()` 仍是原文 `9007199254740993`，不经过 `Double` 丢精度。`Int64Text` / `UInt64Text` 也读它，结构体里的 64 位字段写 `id : Int64Text`，`to_int64()` 取回原值。
+`repr` is the standard library's own field: `Json::stringify` writes it first, so `to_json(Value::int(9007199254740993L)).stringify()` is still the original text `9007199254740993`, losing no precision through `Double`. `Int64Text` / `UInt64Text` read it too; declare 64-bit struct fields as `id : Int64Text` and get the original value back with `to_int64()`.
 
-解析侧与实测数据见 [decisions.md](../decisions/decisions.md#4-json-数值的边界)。
+Parsing side and measured data are in [decisions.md](../decisions/decisions.md#4-boundaries-of-json-numbers).
 
-另一个代价：`Double` 字段收到超出 2^53 的整数会按 `Double` 取近似值（`Double` 本来就装不下）；`Int` 字段超出 ±2^31 由标准库报 overflow，库翻成「超出 Int 范围」。按键路径同理：`get_float` 默认接受整数并加宽，`get_float_strict` 只收 `Float`。
+Another cost: a `Double` field receiving an integer beyond 2^53 takes an approximation as a `Double` (`Double` cannot hold it anyway); an `Int` field beyond ±2^31 gets an overflow from the standard library, which the library translates to "out of range for Int". The key path behaves the same: `get_float` accepts integers and widens them by default, `get_float_strict` accepts only `Float`.
 
-`Bytes` 是同一个道理：标准库的 `ToJson for Bytes` 把可打印 ASCII 原样输出、其余写成 `\xHH`，而 `FromJson for Bytes` 读的就是同一套格式（`moonbitlang/core/json/from_json.mbt:309`）。两头都是标准库的实现，不用库自己写编码器，也不会和标准库走偏。
+`Bytes` follows the same idea: the standard library's `ToJson for Bytes` prints printable ASCII as is and everything else as `\xHH`, and `FromJson for Bytes` reads exactly that format (`moonbitlang/core/json/from_json.mbt:309`). Both ends are standard-library implementations, so the library writes no encoder of its own and cannot drift from the standard library.
 
-## 2. 错误消息
+## 2. Error messages
 
-`derive(FromJson)` 抛的是 `JsonDecodeError((JsonPath, String))`，`JsonPath` 的 `Show` 是 JSON Pointer（`/db/port`）。`extract` 拿这个路径反查 `Value`，翻成和 `get_*` 同一套错误：
+`derive(FromJson)` throws `JsonDecodeError((JsonPath, String))`, where `JsonPath`'s `Show` is a JSON Pointer (`/db/port`). `extract` looks that path up in the `Value` and translates it into the same error set as `get_*`:
 
-| 情况 | 错误 |
+| Situation | Error |
 |---|---|
-| 字段缺失（`Missing field port`） | `MissingKey("db.port")` |
-| 类型不符（`Int::from_json: expected number`） | `TypeMismatch("db.port", "Int", "Str")` |
-| 整数溢出（`Int::from_json: overflow`） | `ParseError("key 'db.port' is out of range for Int")` |
-| 结构体写了 `Int64`（`expected number in string representation`） | `ParseError("key 'db.port' is a 64-bit integer: declare the struct field as Int64Text or use get_int")` |
+| Missing field (`Missing field port`) | `MissingKey("db.port")` |
+| Type mismatch (`Int::from_json: expected number`) | `TypeMismatch("db.port", "Int", "Str")` |
+| Integer overflow (`Int::from_json: overflow`) | `ParseError("key 'db.port' is out of range for Int")` |
+| Struct declares `Int64` (`expected number in string representation`) | `ParseError("key 'db.port' is a 64-bit integer: declare the struct field as Int64Text or use get_int")` |
 
-期望类型从标准库的消息前缀取（`String` → `Str`，`Double` → `Float`，`Map` → `Table`），实际类型从 `Value` 反查，所以消息里的名字和 `get_*` 一致。
+The expected type comes from the standard library's message prefix (`String` → `Str`, `Double` → `Float`, `Map` → `Table`), and the actual type is looked up from the `Value`, so names in messages match `get_*`. Variant fields and message text are in [errors.md](../reference/errors.md).
 
-## 3. 手写提取（`FromConfig`）：字段标签
+## 3. Default extraction (`FromConfig`): field labels
 
-`derive(FromJson)` 那条路牺牲了 per-field 的控制：字段名必须与配置键一致、没有默认值、
-64 位字段要包 `Int64Text`。第二条路手写 impl，每个字段的 **json 标签内联在调用点**：
+`FromConfig` is the default extraction path: it reads field by field from a `Value` and does not go through Json. Each field's
+**label is inlined at the call site**:
 
 ```moonbit nocheck
 impl @config.FromConfig for Server with fn from_config(get : @config.Getter) -> Server raise @config.ConfigError {
   {
-    host: get.string("db-host"),          // 标签改名：配置键与字段名解耦
-    port: get.int("port"),                // 原生 Int64，不用 Int64Text
-    retry: get.int32_or("retry", 3),      // 缺省值
-    comment: get.opt_string("comment"),   // 可选：缺失或 null 都是 None
-    tags: get.strings("tags"),            // 数组
-    db: @jsonfmt.json_field(get, "db"),   // 嵌套结构体走 derive(FromJson)，一行委托
+    host: get.string("db-host"),          // label renamed: config key decoupled from field name
+    port: get.int("port"),                // native Int64, no Int64Text
+    retry: get.int32_or("retry", 3),      // default value
+    comment: get.opt_string("comment"),   // optional: missing or null both give None
+    tags: get.strings("tags"),            // array
+    db: @jsonfmt.json_field(get, "db"),   // nested struct via derive(FromJson), one-line delegation
   }
 }
 let srv : Server = config.get_struct("server")
 ```
 
-入口有三个：`Config::get_struct`（按键取子树）、`Config::get_struct_validated`
-（提取后跑 `Validate`）、`Value::to_struct`（原语，标签相对该值解析）。
+There are three entry points: `Config::get_struct` (take the subtree by key), `Config::get_struct_validated`
+(run `Validate` after extraction) and `Value::to_struct` (the primitive; labels resolve relative to that value).
 
-### Getter 的语义
+### Getter semantics
 
-| 方法族 | 行为 |
+| Method family | Behaviour |
 |---|---|
-| `string` / `bool` / `int` / `int32` / `uint64` / `float` / `float_strict` / `bytes` | 必填：缺失报 `MissingKey`，类型不符报 `TypeMismatch`，口径同 `get_*` |
-| `*_or` | 缺失用默认值；**键存在但类型不符（或越界）仍然报错**，绝不静默落默认 |
-| `opt_*` | 缺失或 `null` 都是 `None`；类型不符照常报错 |
-| `strings` / `ints` / `floats` / `bools` / `structs` | 元素错误带下标路径（`server.tags.1`） |
-| `nested` | 子 Getter 前缀接上标签，嵌套结构体递归走 `from_config` |
-| `value` / `opt_value` | 逃生舱：拿原始 `Value` 自己 match |
+| `string` / `bool` / `int` / `int32` / `uint64` / `float` / `float_strict` / `bytes` | Required: missing raises `MissingKey`, wrong type raises `TypeMismatch`, same rules as `get_*` |
+| `*_or` | Missing uses the default; **the key exists but has the wrong type (or is out of range) still errors**, never silently falling back to the default |
+| `opt_*` | Missing or `null` both give `None`; wrong type still errors |
+| `strings` / `ints` / `floats` / `bools` / `structs` | element errors carry the indexed path (`server.tags.1`) |
+| `nested` | the child Getter prefixes the label, nested structs recurse through `from_config` |
+| `value` / `opt_value` | escape hatch: take the raw `Value` and match it yourself |
 
-和 `get_*` 一样的严格性：`int` 只收整数来源（精确 `Int64`，这条路径直接读 `Value`，
-不走 Json，9007199254740993 这类大整数不丢）；`float` 加宽整数、`float_strict` 不加宽；
-字符串来源永不变成数字或字节串。没有 Json 往返、没有探针，性能比 derive 路径好。
+Strictness matches `get_*`: `int` accepts only integer origins (exact `Int64`; this path reads `Value` directly,
+not through Json, so large integers such as 9007199254740993 do not lose precision); `float` widens integers, `float_strict` does not;
+a string origin never becomes a number or a byte string. No Json round trip, no probes, so it performs better than the derive path.
 
-### 两套路径的分工
+### Division of labour with the derive path
 
-MoonBit 没有反射，字段和标签的对应关系只能在调用点建立——**即使标签等于字段名，
-也要在 impl 里写一遍**。所以默认走 derive(FromJson)（零样板，自动按字段名取）；
-需要改名、缺省值、原生 64 位或嵌套路径时才手写 `FromConfig`。嵌套结构体若继续用
-derive 路径，字段里用 `json_field` 一行委托（严格探针照常生效），不用逐字段手写。
-逐字段一行的代价与 `Validate` impl 相同，是手写换控制力。
+MoonBit has no reflection, so the field-to-label mapping can only be built at the call site — **even when the label equals the field name,
+it must be written once in the impl**. The default is `FromConfig`: it lives in core, has zero dependencies, shares semantics with `get_*`,
+and does not go through Json. `derive(FromJson)` is an optional adapter, suited to simple structs whose field names all equal the config keys,
+that need no defaults and have no 64-bit fields; it goes through `Value → Json` and the standard library's `FromJson`,
+with strictness simulated by probes rather than guaranteed by construction. If nested structs keep using the derive path, delegate one line per field with
+`json_field` instead of writing each field by hand. The cost of one line per field equals that of a `Validate` impl:
+handwriting in exchange for control.
 
-## 4. 结合 serde（`serde_bridge`）
+## 4. Combining with serde (`serde_bridge`)
 
-[MoonBit 社区的 serde 框架](https://github.com/moonbit-community/serde.mbt)（`moonbit-community/serde.mbt`）把"类型描述自己的形状"和"格式读写数据模型"分开：类型实现 `Deserialize`（手写或由它的 derive 生成器生成），格式实现 `Deserializer`。`serde_bridge` 包给 moonfig 的 `Value` 写了一个 `Deserializer` 后端，任何 serde 类型都能直接从配置里提取：
+The [MoonBit community serde framework](https://github.com/moonbit-community/serde.mbt) (`moonbit-community/serde.mbt`) separates "types describing their own shape" from "formats reading and writing the data model": types implement `Deserialize` (by hand or via its derive generator), formats implement `Deserializer`. The `serde_bridge` package provides a `Deserializer` backend over moonfig's `Value`, so any serde type can be extracted straight from config:
 
 ```moonbit nocheck
-// 类型侧：serde 用户既有代码，moonfig 不感知
+// type side: existing serde user code, moonfig is unaware of it
 impl @serde.Deserialize for Server with fn deserialize(d) -> Server raise @serde.DeError {
   d.deserialize_struct_begin("Server", ["db-host", "port"])
-  // ... struct 协议逐字段读，required 收尾
+  // ... the struct protocol reads field by field, required closes it
 }
 
-// moonfig 侧：三 个入口
-let srv : Server = @serde_bridge.extract_serde(value)          // 整棵树
-let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // 按键
-db: @serde_bridge.serde_field(get, "db"),                      // FromConfig 字段级委托
+// moonfig side: three entry points
+let srv : Server = @serde_bridge.extract_serde(value)          // whole tree
+let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // by key
+db: @serde_bridge.serde_field(get, "db"),                      // FromConfig field-level delegation
 ```
 
-语义与 serde 自带的 `Value` 后端对齐，且与 moonfig 的严格性一致：整数只收 `Int` 节点
-（范围检查，浮点不截断、字符串不解析），`deserialize_double` 加宽整数（同 `get_float`），
-字符串来源不能变数字或字节串。`DeError` 在入口翻译成 `ConfigError`：serde 的
-`MissingField`/`InvalidType`/`InvalidValue` 分别对应 `MissingKey`/`TypeMismatch`/
-`InvalidValue`，键名接上提取前缀（`$.db.port` → `key 'srv.db.port'`）。
+Semantics align with serde's own `Value` backend and with moonfig's strictness: integers accept only `Int` nodes
+(range-checked, floats not truncated, strings not parsed), `deserialize_double` widens integers (like `get_float`),
+and a string origin cannot become a number or a byte string. `DeError` is translated to `ConfigError` at the entry points: serde's
+`MissingField`/`InvalidType`/`InvalidValue` map to `MissingKey`/`TypeMismatch`/
+`InvalidValue`, and key names are prefixed with the extraction path (`$.db.port` → `key 'srv.db.port'`).
 
-依赖说明：moon.mod 因此引入 `moonbit-community/serde.mbt@0.3.1`（其自身只依赖
-moonbitlang core，另有 parser/async 供它的 derive 生成器使用）。不使用 serde 的用户
-不受影响：core 与 json_format 都不依赖它，现有 API 零变化。
+Dependency note: moon.mod therefore pulls in `moonbit-community/serde.mbt@0.3.1` (which itself depends only on
+moonbitlang core, plus parser/async for its derive generator). Users who do not use serde are unaffected: neither core nor json_format depends on it, and existing APIs change in no way.
 
-可运行的完整示例（类型属性 + 生成器产物 + 三个入口）见
-[examples/serde_extract](../../examples/serde_extract/README.md)。
+A complete runnable example (type attributes + generator output + three entry points) is in
+[examples/serde_extract](../../examples/serde_extract/README.md).

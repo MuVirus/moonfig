@@ -7,41 +7,40 @@ You can browse and install extra skills here:
 
 ## What this project is
 
-`moonfig` is a configuration library for MoonBit. It accepts configuration from
-multiple sources (JSON, INI, `.env`, YAML, TOML, XML, CBOR, and in-memory
-tables), normalizes every source into a single intermediate representation,
-merges the sources in layers (later sources override earlier ones), and exposes
-the result by key or by extraction into a user-defined struct:
+`moonfig` is a general-purpose configuration library for MoonBit. It reads
+configuration from many sources and formats, normalizes everything into one
+intermediate representation, merges the layers (later sources win), and returns
+the result by key or as a struct.
 
-```
-multiple sources  →  one intermediate representation  →  layered merge
-                  →  read by key / extract into a struct
-```
+- **Sources.** In-memory tables, config files, environment variables and
+  command-line arguments.
+- **Formats.** JSON, INI, `.env`, YAML, TOML, XML, CBOR and a plain `Value`
+  tree, detected from the file extension or the content.
+- **Read paths.** `get_*` by key, or extraction into your own struct.
+- **Beyond reading.** Hot reload, origin tracking and validation.
 
 ### Design constraints
 
-The following constraints apply to all code in this repository:
-
-- **Integer precision.** Integers are stored as `Int64`, never as floating point.
-- **The core is platform-independent.** It contains no platform-specific code
-  and must compile on every target; the file, environment and command-line
-  sources live in their own packages at the module root.
-- **Struct extraction.** Extraction uses MoonBit's native `derive(FromJson)`;
-  MoonBit currently supports neither deriving third-party traits nor macros.
-- **Error messages.** Every message names the key, the expected type and the
-  actual type.
-- **Package layout.** `core/` plus one package per format under `core/format/`,
-  and `file_source/`, `env_source/`, `cli_source/` at the module root; always
-  write import aliases explicitly (`@config`, `@jsonfmt`).
-- **Package names.** Never name a package after a core package; format packages
-  keep the `_format` suffix, source packages the `_source` suffix.
-- **Cross-package helpers.** Methods cannot cross packages (`4059`); use free
+- **Platform.** `core/` compiles on every target; anything platform-specific
+  lives in its own package at the module root.
+- **Packages.** Never reuse a core package name; format packages end in
+  `_format`, source packages in `_source`.
+- **Cross-package calls.** Methods cannot cross packages (`4059`); use free
   functions such as `to_json(v)`.
 
 ### Documentation
 
-Documents live in `docs/`. Where each one goes and what belongs in it is in
-[`docs/AGENTS.md`](docs/AGENTS.md).
+Documents live in `docs/`. English is authoritative; every document has a Chinese
+copy named `foo.zh.md` next to it. Root pairs are `README.mbt.md` /
+`README_ZH.md` and `AGENTS.md` / `AGENTS_ZH.md`.
+[`docs/AGENTS.md`](docs/AGENTS.md) lists the subdirectories; each subdirectory
+has its own `AGENTS.md` for the files inside. When the two languages disagree,
+fix the Chinese copy.
+
+A change that alters a public API, an error message or user-visible behavior
+updates the affected docs in the same change, and the PR / commit states it with
+a `Doc impact:` line. Error message text lives only in
+[`docs/reference/errors.md`](docs/reference/errors.md).
 
 ## Project Structure
 
@@ -75,9 +74,17 @@ Documents live in `docs/`. Where each one goes and what belongs in it is in
 - Try to keep deprecated blocks in file called `deprecated.mbt` in each
   directory.
 
+- Write import aliases explicitly (`@config`, `@jsonfmt`).
+
 ## Tooling
 
 - `moon fmt` is used to format your code properly.
+
+- `moonx scripts/check-docs.mbtx` checks the Markdown tree: indexes, links and
+  anchors, decision statuses and their index, design-doc opening lines, English /
+  Chinese pairing, code fence languages, examples and the roadmap. It runs on the
+  Wasm backend; CI and the pre-commit hook run it too. Usage and each check:
+  [docs/conventions/docs.md](docs/conventions/docs.md).
 
 - `moon ide` provides project navigation helpers like `peek-def`, `outline`, and
   `find-references`. See $moonbit-agent-guide for details.

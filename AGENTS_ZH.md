@@ -7,34 +7,30 @@
 
 ## 这个项目是什么
 
-`moonfig` 是一个 MoonBit 配置库。它接受来自多个来源的配置（JSON、INI、`.env`、YAML、TOML、
-XML、CBOR 以及内存中的表），把每个来源归一成同一种中间表示，再按层合并（后加入的来源覆盖
-先加入的），最后按键读取，或提取到用户定义的结构体：
+`moonfig` 是一个 MoonBit 综合配置库。它从多种来源、多种格式读配置，归一成同一种中间表示，
+按层合并（后加入的来源覆盖先加入的），最后按键取值或提取成结构体。
 
-```
-多个来源  →  一种中间表示  →  按层合并
-          →  按键取值 / 提取到结构体
-```
+- **多来源**：内存表、配置文件、环境变量、命令行参数。
+- **多格式**：JSON、INI、`.env`、YAML、TOML、XML、CBOR，也能直接给 `Value` 树；按后缀或内容识别。
+- **两种取法**：按键 `get_*`，或提取到自定义结构体。
+- **不止解析**：热更新、来源追踪、校验。
 
 ### 设计约束
 
-以下约束适用于本仓库的全部代码：
-
-- **整数精度。** 整数一律存为 `Int64`，不使用浮点数。
-- **core 无平台依赖。** core 不含平台相关代码，必须在所有 target 上编译通过；
-  文件、环境变量和命令行来源各自一个包，放在模块根目录。
-- **结构体提取。** 提取使用 MoonBit 原生的 `derive(FromJson)`；MoonBit 暂不支持派生第三方 trait，
-  也不支持宏定义。
-- **错误消息。** 每条消息写出键名、期望类型和实际类型。
-- **包布局。** `core/` 加上 `core/format/` 下一种格式一个包，再加模块根目录的
-  `file_source/`、`env_source/`、`cli_source/`；import 别名一律显式写出
-  （`@config`、`@jsonfmt`）。
-- **包名。** 包名不得与 core 中的包重名；格式包保留 `_format` 后缀，来源包保留 `_source` 后缀。
-- **跨包辅助函数。** 方法不能跨包（`4059`）；改用自由函数，如 `to_json(v)`。
+- **平台**：`core/` 在所有 target 上编译通过；平台相关的部分各自一个包，放在模块根目录。
+- **包名**：不得与 core 的包重名；格式包以 `_format` 结尾，来源包以 `_source` 结尾。
+- **跨包调用**：方法不能跨包（`4059`）；改用自由函数，如 `to_json(v)`。
 
 ### 文档
 
-文档放在 `docs/`。放在哪、写什么，见 [`docs/AGENTS.md`](docs/AGENTS.md)。
+文档放在 `docs/`。英文是权威版本；每篇文档旁边有 `foo.zh.md` 中文副本。根目录的配对是
+`README.mbt.md` / `README_ZH.md` 和 `AGENTS.md` / `AGENTS_ZH.md`。
+[`docs/AGENTS.md`](docs/AGENTS.md) 登记子目录；每个子目录各有自己的
+`AGENTS.md`，管本目录的文件。中英文不一致时以英文为准，并修中文副本。
+
+改动公开 API、错误消息或用户可见行为时，同一次改动里更新受影响的文档，并在 PR / commit
+里用 `Doc impact:` 一行写清影响面。错误消息原文只放在
+[`docs/reference/errors.md`](docs/reference/errors.md)。
 
 ## 项目结构
 
@@ -60,9 +56,15 @@ XML、CBOR 以及内存中的表），把每个来源归一成同一种中间表
 
 - 尽量把废弃的 block 放在每个目录下名为 `deprecated.mbt` 的文件里。
 
+- import 别名一律显式写出（`@config`、`@jsonfmt`）。
+
 ## 工具
 
 - `moon fmt` 用来把代码格式化。
+
+- `moonx scripts/check-docs.mbtx` 检查 Markdown：目录索引、链接与锚点、决策状态与索引、
+  设计文档开头、中英文配对、代码块语言、示例和路线图。走 Wasm 后端；CI 和
+  pre-commit 也会跑它。用法和每项检查见 [docs/conventions/docs.md](docs/conventions/docs.md)。
 
 - `moon ide` 提供项目导航功能，比如 `peek-def`、`outline` 和 `find-references`。
   详见 $moonbit-agent-guide。

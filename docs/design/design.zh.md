@@ -1,0 +1,95 @@
+# moonfig 设计
+
+> **结论**：主线是「多 Source → 统一表示 → 分层合并 → 取值 / 提取到结构体 / 校验」，先做能跑通的最小闭环。
+> **权威边界**：导览——类型和函数签名以 `.mbti` 与代码为准，本文解释数据模型和取舍。
+> **不覆盖**：操作步骤见 [layer-sources.md](../guides/layer-sources.zh.md)，历史见 [decisions.md](../decisions/decisions.zh.md)。
+
+## 1. 核心类型
+
+```moonbit
+///| 配置值在内存里的形状
+pub(all) enum ValueKind {
+  Null
+  Bool(Bool)
+  Int(Int64)              // 所有整数统一用 Int64
+  Float(Double)
+  Str(String)
+  Bytes(Bytes)            // 二进制数据，只有 CBOR 这类二进制格式会产生
+  Array(Array[Value])
+  Table(Map[String, Value])
+}
+
+///| 配置值
+pub struct Value {
+  kind : ValueKind
+  priv origin : &OriginSite?   // 来源对象；构造器给 None，合并前补上
+}
+```
+
+`origin` 只存一个指向 `OriginSite` 的引用，不存 label 字符串。`OriginSite` 是来源自己的对象，
+提供 `kind`、`describe(KeyPath)` 和可选的 `locator`；label 在 `Origin::label()` 里按需生成。
+
+`Source::collect` 返回 `Layer { value, origin }`，一层的值和它的 site 一起产出。`Config` 把 site
+递归补到整棵树；已经有 site 的节点不覆盖，组合来源可以先用 `Value::with_origin` 给子树标不同的 site。
+
+`KeyPath` 是结构化的键路径（`["db", "port"]`），点号串只在 `origin_of` / `get_path` 的 API
+边界解析一次；`origin_of` / `origins()` 返回 `Origin`，用 `path()` 拿层级，用 `label()` 拿展示文本。
+
+`Value::from_literal(StringView)` 把一段字面文本猜成配置值（`Bool` / `Int64` / `Float` /
+字符串），环境变量和命令行共用这一套，规则见 [sources.md](sources.zh.md)。
+
+## 2. 合并
+
+```moonbit
+fn merge(base : Value, over : Value) -> Value
+```
+
+三条规则：
+
+- 都是 `Table` → 递归逐 key 合并
+- 其它 → `over` 覆盖 `base`
+- 数组**整体替换**，不拼接
+
+## 3. 配置对象与取值
+
+`Config` 持有 `sources`、`rule`、`value` 三个字段：`add` 只 append，`build` 按 `rule` 把 Source 逐个 merge 成一棵树，之后的 `get_*` 都从这棵树按路径取值。它不认识具体格式，只认识 `Source`。
+
+`MergeRule` 默认 `LastWins`（后加覆盖先加），另有 `FirstWins`、`ByKind(Array[SourceKind])` 和 `Custom(fn)`。规则是整份 `Config` 的，不做单层特殊；要单层特殊就给 `Source` 包一层。`ByKind` 的数组按优先级从高到低写，没列出的 kind 排在最后，同一档内后加的赢；`Custom(fn)` 收到「已经合好的部分」和「下一层」，返回新的部分。
+
+```moonbit
+let cfg = Config::new()
+  .add(MemorySource::new(table))
+  .add(StringSource::new(text, JsonFormat::new()))
+  .build()                       // 依次合并，后加者优先
+
+cfg.get_string("db.host")        // String
+cfg.get_int("db.port")           // Int64
+cfg.get_float("ratio")           // Double
+cfg.get_bool("debug")            // Bool
+cfg.get_bytes("cert")            // Bytes
+```
+
+- 路径用点号展开：`"db.host"` → `Table{"db": Table{"host": ...}}`
+- key 不存在 → **报错，不返回默认值**（默认值应该由 `MemorySource` 提供，那才是它的职责）
+- `get_float` 默认把 `Int` 加宽成 `Double`，超出 2^53 时按浮点精度近似；`get_float_strict` 只接受 `Float`。反方向（`Float` → 整数）始终报错，不截断
+- `Config::snapshot()` 导出 `Array[Entry]`，每条是路径、值、来源；`origins()` 从同一套遍历里取来源。表节点递归，数组当叶子
+
+需要配置文件变化后自动重读时，用 `build_live()` 保留来源清单，见 [hot-reload.md](hot-reload.zh.md)。
+
+## 4. 错误
+
+`ConfigError` 是唯一跨库边界的错误类型。变体字段、触发条件和 `Show` 原文见 [errors.md](../reference/errors.zh.md)；枚举和 `Show` 实现见 `core/error.mbt`。
+
+唯一体验标准：用户看到错误，能立刻知道**哪个键、期望什么、实际什么**。
+
+`IoError` 和 `ParseError` 分开：读不到和读到了但解析不了是两回事，混在一起会让用户去查格式。
+`MergeConflict` 是预留变体——现在的合并规则都是覆盖，不做类型冲突判定。
+
+## 设计文档
+
+- [sources.md](sources.zh.md) —— Source / Format 模型、package 划分与来源追踪
+- [extract.md](extract.zh.md) —— 提取到结构体、整数映射、标准库错误映射
+- [validate.md](validate.zh.md) —— 校验：按键规则表、结构体 `Validate`、未知键
+- [format-detect.md](format-detect.zh.md) —— 自动发现格式：后缀优先、内容判断、候选顺序
+- [hot-reload.md](hot-reload.zh.md) —— 热更新：快照替换、文件轮询、失败保留旧配置
+- [../decisions/decisions.md](../decisions/decisions.zh.md) —— 决策记录

@@ -33,6 +33,9 @@ jobs:
       - name: Fetch dependencies
         run: moon update
 
+      - name: Check documentation
+        run: moonx scripts/check-docs.mbtx
+
       - name: Check formatting
         run: moon fmt --check
 
@@ -67,12 +70,17 @@ jobs:
 
       - name: Run examples
         run: |
+          moon run examples/quick_start
           moon run examples/multi_source -- --log-level=debug
           moon run examples/strict_types
+          moon run examples/from_config
           moon run examples/validate
           moon run examples/format_detect
           moon run examples/hot_reload
           moon run examples/serde_extract
+
+      - name: Compare example output with README
+        run: bash scripts/check-examples.sh
 
   test:
     name: Test

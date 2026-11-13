@@ -1,175 +1,372 @@
-# 决策记录
+# Decision records
 
-记录已经踩过并定了结论的事。实测数据写清出处，结论写清代价。
+Things already hit and settled. Measured data states its source; conclusions state
+their cost.
 
-## 1. 包名不能和 MoonBit 标准库的包重名
+## Index
 
-> **2026-09 实测：包名不能和 MoonBit 标准库的包重名，换别名也救不回来。**
-> 格式 package 原本叫 `json/`，后来挪进 `core/source/` 时又试过叫 `json/`，两次都失败。
-> 包名本身占一个全局名字：自己的包叫 `json`，`moonbitlang/core/json` 就根本加载不进来
-> （`Package "json" not found in the loaded packages`），它的 `.mbti` 里 `@json.JsonPath`
-> 这类自引用随之失效。把标准库那边的 import 写成 `@corejson` 也没用——冲突发生在包名，
-> 不在别名上。结论：包名一律带后缀，避免撞名（`env` 会和 `moonbitlang/core/env` 撞，
-> `file` 迟早也会撞上什么）。后缀写清包里提供什么：格式包 `_format`，Source 包 `_source`。
-> 2026-10 格式包改成只提供 `Format` 后，后缀从 `_source` 改成 `_format`，撞名这个结论不变。
+There are only four statuses: **active**, **partially superseded**,
+**superseded**, **withdrawn**. The supersession relation goes in parentheses in
+the status, e.g. `active (supersedes #11)`; the body only records the reasoning
+and cost at the time. `Affected docs` lists the documents that still cite this
+conclusion, with paths relative to `docs/`; pure implementation conventions write
+`none (implementation only)`.
 
-## 2. 方法不能跨包
+| ID | Decision | Status | Affected docs |
+|---|---|---|---|
+| #1 | Package names cannot collide with MoonBit standard library package names | active | design/sources.md |
+| #2 | Methods cannot cross packages | active | design/sources.md, design/extract.md |
+| #3 | Add a `Bytes` branch to `Value` | active | design/design.md, design/sources.md |
+| #4 | Boundaries of JSON numbers | active | design/extract.md |
+| #5 | Choosing a CBOR library | active | design/sources.md |
+| #6 | Origin tracking and merge rules | active | design/design.md, design/sources.md, guides/layer-sources.md |
+| #7 | The three sources: file, environment variables, command line | active | design/sources.md, design/cli-args.md, guides/layer-sources.md |
+| #8 | `String::compare` compares length first | active | none (implementation only) |
+| #9 | Validation | active | design/validate.md |
+| #10 | Float widening and snapshots with origins | active | design/design.md, design/sources.md |
+| #11 | Hand-written `FromConfig` instead of derive labels | partially superseded (#13 changes the default extraction order) | design/extract.md, guides/choose-extraction.md |
+| #12 | serde integration in its own package, not in core | active | design/extract.md |
+| #13 | Default order of extraction paths | active (supersedes #11's default order) | design/extract.md, guides/choose-extraction.md |
 
-> **2026-09 实测：方法不能跨包。**
-> 跨包给别的包的类型加方法会报 `4059: Cannot define method for foreign type`。
-> 所以 `Value::to_json` → `to_json(v)`，`Config::extract` → `extract_from(cfg, path)`。
-> 自由函数不受影响（`extract(v)` 本来就是自由函数）。设计新 API 时要提前想清楚
-> 哪些函数将来可能需要跨包——**能用自由函数就别用方法**。
+## 1. Package names cannot collide with MoonBit standard library package names
 
-## 3. `Value` 加 `Bytes` 分支
+Status: active | Affects: design/sources.md
 
-> **2026-10 决定：`Value` 加 `Bytes` 分支。**
-> CBOR 是第一个会产出字节串的格式，而 `Value` 原来没有放字节串的地方。
-> 加分支的机械成本很低：全库只有两处对 `ValueKind` 做穷尽匹配
-> （`ValueKind::name` 和 `to_json`），`merge` / `get_path` / 各个 `get_*`
-> 都只匹配自己关心的形状，不用改。加了之后 `Value` 才真的覆盖了所有格式的取值，
-> 「提取到结构体」这条主线也不断——结构体里的 `Bytes` 字段能原样提取出来。
+> **Measured 2026-09: a package name cannot collide with a MoonBit standard
+> library package, and changing the import alias does not save it.**
+> The format package was originally called `json/`, and when it later moved into
+> `core/source/` it was tried as `json/` again; both attempts failed. The package
+> name itself occupies a global name: when your own package is called `json`,
+> `moonbitlang/core/json` cannot be loaded at all
+> (`Package "json" not found in the loaded packages`), and its self-references
+> such as `@json.JsonPath` in its `.mbti` break with it. Writing the standard
+> library import as `@corejson` does not help either — the conflict happens at
+> the package name, not at the alias. Conclusion: always suffix package names to
+> avoid collisions (`env` would collide with `moonbitlang/core/env`, and `file`
+> will collide with something eventually). The suffix states what the package
+> provides: `_format` for format packages, `_source` for Source packages.
+> In 2026-10 the format packages changed to provide only `Format`, so the suffix
+> moved from `_source` to `_format`; the collision conclusion is unchanged.
 
-## 4. JSON 数值的边界
+## 2. Methods cannot cross packages
 
-| 实测 | 结果 | 影响 |
+Status: active | Affects: design/sources.md, design/extract.md
+
+> **Measured 2026-09: methods cannot cross packages.**
+> Adding a method for another package's type across a package boundary reports
+> `4059: Cannot define method for foreign type`.
+> So `Value::to_json` → `to_json(v)`, `Config::extract` → `extract_from(cfg, path)`.
+> Free functions are unaffected (`extract(v)` was a free function all along).
+> When designing new APIs, think ahead about which functions may need to cross
+> packages later — **if a free function works, do not use a method**.
+
+## 3. Add a `Bytes` branch to `Value`
+
+Status: active | Affects: design/design.md, design/sources.md
+
+> **Decided 2026-10: add a `Bytes` branch to `Value`.**
+> CBOR is the first format that produces byte strings, and `Value` had nowhere to
+> put a byte string. The mechanical cost of adding the branch is low: only two
+> places in the whole library match exhaustively on `ValueKind`
+> (`ValueKind::name` and `to_json`); `merge` / `get_path` / the various `get_*`
+> only match the shapes they care about and need no change. Only with it does
+> `Value` really cover the values of every format, and the main line "extract
+> into a struct" is not broken — a `Bytes` field in a struct can be extracted
+> as-is.
+
+## 4. Boundaries of JSON numbers
+
+Status: active | Affects: design/extract.md
+
+| Measured | Result | Impact |
 |---|---|---|
-| `@json.parse("9007199254740993")` | `Number(9007199254740992, repr=Some(9007199254740993))` | 超出精确整数范围时 `repr` 留着原文，靠它还原大整数 |
-| `@json.parse("30")` / `@json.parse("1.5")`（默认） | `repr` 都是 `None` | 默认不保留原文，无法按写法区分整数和浮点 |
-| `@json.parse("1.0", preserve_number_repr=true)` | `Number(1.0, repr=Some("1.0"))` | 打开选项后每个数字都有原文，按写法分流才成立 |
-| `@json.from_json(@json.parse("\"1.5\""))` 到 `Double` | 失败 `Double::from_json: expected number` | 字符串自动转数字在 Json 层做不到 |
-| `@json.from_json(@json.parse("\"true\""))` 到 `Bool` | 失败 `Bool::from_json: expected boolean` | 同上 |
-| `@json.from_json(@json.parse("5432.7"))` 到 `Int` | 标准库成功，得 `5432` | **标准库会静默截断**；`extract` 用 `"NaN"` 探针把它改成 `TypeMismatch` |
+| `@json.parse("9007199254740993")` | `Number(9007199254740992, repr=Some(9007199254740993))` | outside the exact integer range, `repr` keeps the original text, and large integers are restored from it |
+| `@json.parse("30")` / `@json.parse("1.5")` (default) | `repr` is `None` for both | by default the original text is not kept, so integer and float cannot be told apart by spelling |
+| `@json.parse("1.0", preserve_number_repr=true)` | `Number(1.0, repr=Some("1.0"))` | with the option on, every number has its original text, so routing by spelling works |
+| `@json.from_json(@json.parse("\"1.5\""))` to `Double` | fails with `Double::from_json: expected number` | the Json layer cannot convert strings to numbers automatically |
+| `@json.from_json(@json.parse("\"true\""))` to `Bool` | fails with `Bool::from_json: expected boolean` | same as above |
+| `@json.from_json(@json.parse("5432.7"))` to `Int` | the standard library succeeds, yielding `5432` | **the standard library truncates silently**; `extract` uses a `"NaN"` probe to turn this into `TypeMismatch` |
 
-> **2026-10 更正：用 `preserve_number_repr=true` 保住每个数字的写法**
+> **Correction 2026-10: use `preserve_number_repr=true` to keep the spelling of
+> every number**
 >
-> 核心库原来只在超出 `Double` 精确范围时才填 `repr`，所以 `1.0`、`1e2`
-> 这种「值是整数、写法是浮点」的数字拿不到原文，只能按数值反推成 `Int`。
-> 现在 `@json.parse` 支持 `preserve_number_repr=true`，`JsonFormat::decode`
-> 直接打开它，所有数字的原文都在 `repr` 里：
+> The core library used to fill `repr` only when a value went beyond `Double`'s
+> exact range, so numbers such as `1.0` and `1e2` — integer in value, float in
+> spelling — had no original text and could only be inferred back as `Int` from
+> the value. `@json.parse` now supports `preserve_number_repr=true`, and
+> `JsonFormat::decode` turns it on directly, so the original text of every number
+> is in `repr`:
 >
-> - `repr` 是整数形状（没有小数点、没有 `e` / `E`）→ 按 `Int64` 精确解析
-> - 其余形状 → `Float`，包括 `1.0`、`1e2`、`-0.0`
-> - `repr` 缺失（只可能来自手工构造的 `Json`）→ 按 `Float` 处理
+> - `repr` has integer shape (no decimal point, no `e` / `E`) → parse exactly as `Int64`
+> - any other shape → `Float`, including `1.0`, `1e2`, `-0.0`
+> - `repr` missing (only possible for a hand-built `Json`) → treat as `Float`
 >
-> 这样浮点来源不会再混进 `Int` / `Int64Text` 字段，代价是解析时多存
-> 每个数字的原文。`5432` 仍然是 `Int`，`get_int` 不受影响。
+> This way float sources no longer leak into `Int` / `Int64Text` fields, at the
+> cost of storing the original text of every number while parsing. `5432` is
+> still `Int`, and `get_int` is unaffected.
 
-## 5. CBOR 库的选择
+## 5. Choosing a CBOR library
 
-| 实测 | 结果 | 影响 |
+Status: active | Affects: design/sources.md
+
+| Measured | Result | Impact |
 |---|---|---|
-| registry 上的 CBOR 库 | `mizchi/cbor`（下载量最高）用的是旧的 `moon.mod.json`，当前工具链拒绝安装 | 只能从 `2515050242/cbor`（纯 MoonBit、零传递依赖、完整 RFC 8949）和 `f4ah6o/simple-webauthn/cbor`（同样零依赖，但是子集：不支持半精度/单精度浮点、不支持不定长容器、而且**静默忽略尾随字节**）里选 |
+| CBOR library in the registry | `mizchi/cbor` (most downloads) uses the old `moon.mod.json`, and the current toolchain refuses to install it | the choice is limited to `2515050242/cbor` (pure MoonBit, zero transitive dependencies, complete RFC 8949) and `f4ah6o/simple-webauthn/cbor` (also zero dependencies, but a subset: no half or single precision floats, no indefinite-length containers, and it **silently ignores trailing bytes**) |
 
-## 6. 来源追踪与合并规则
+## 6. Origin tracking and merge rules
 
-> **2026-10 定稿：存来源对象，不存 label 字符串**
+Status: active | Affects: design/design.md, design/sources.md, guides/layer-sources.md
+
+> **Finalized 2026-10: store origin objects, not label strings**
 >
-> - `Value.origin` 的类型是 `&OriginSite?`：每个节点只多一个引用，不存 label。`Value` 的 `Eq` / `Debug` 都只看 `kind`，否则内容相同、来源不同的值不相等。
-> - `OriginSite` 是 core 的 `pub(open) trait`：`kind`、`describe(KeyPath)`、`locator`（默认 None）。`label` 只在 `Origin::label()` 里按需生成，不反解析。
-> - `KeyPath` 是结构化的段数组（`["db", "port"]`），点号串只在 `origin_of` / `get_path` 的 API 边界解析一次；`origins()` 遍历时直接拼路径。
-> - `Source::collect` 返回 `Layer { value, origin }`，一层的值和它的 site 一起产出；`Source::kind` 给 `ByKind` 排序用，不用先 `collect`。
-> - 环境变量、命令行整层共用一个 site，site 里存「路径 → 原始变量名/参数名」的索引；`describe(path)` 查表。`Value` 不再按叶子存字符串。
-> - `MemorySource` 返回独立的 `MemorySite`，不返回自己：native 默认的引用计数（`MOONBIT_TRIAL_DELETION=0`）不回收环，`MemorySource → Value → &MemorySource` 会漏。JS / wasm-gc 的 tracing GC 不受影响。
-> - `Value::with_origin(&OriginSite)` 留给组合来源（一个来源里读多个文件），按子树标不同的 site；`attach_origin` 只补 `None`，不覆盖已有的。
-> - `&T` 在 MoonBit 里是 trait object，只能用于 trait，不是 Rust 的借用：没有生命周期检查，trait object 会被 GC/RC 保活。`&Path` 不成立，`Path` 是 struct。
-> - `SourceId` 枚举方案没有采用：每个分支仍要存 String，Env/Cli 仍要按路径查名字；trait object 的 site 同时解决这两件事。
-> - `ConfigError::MergeConflict` 目前没有代码路径会抛：三种合并规则都是覆盖，不做类型冲突判定。变体先保留，给以后加校验时用。
-> - `StringSource` / `BytesSource` 归到 `SourceKind::Custom`，标签分别是 `string` / `bytes`。它们既不是文件，也不是环境变量；给 `ByKind` 一个明确的档位比硬塞进 `Memory` 更清楚。
-> - `ByKind(order)` 的数组按优先级从高到低写；没列出的 kind 排在最后。实现上按优先级**从低到高**处理来源，再用 `LastWins` 合并——同一档内后加的仍然赢。
-> - `Custom(fn)` 收到的是「已经合好的部分」和「下一层」，返回新的部分。来源已经挂在值上，自定义函数要自己负责保留。
-> - `Config::origin_of` / `origins` 保留 `raise ConfigError`：没 `build()` 时它们会现场合并，来源解析失败必须报出来，不能吞掉。路径不存在返回 `None`。
-> - 取值错误暂时还没带上来源（`TypeMismatch` 仍是三个字段），等错误类型扩展后再补；现在先用 `origin_of` 查。
+> - `Value.origin` has type `&OriginSite?`: each node carries one extra reference
+>   and no label. `Value`'s `Eq` / `Debug` only look at `kind`, otherwise values
+>   with the same content but different origins would not be equal.
+> - `OriginSite` is a core `pub(open) trait`: `kind`, `describe(KeyPath)`,
+>   `locator` (default None). `label` is generated on demand only in
+>   `Origin::label()`; nothing is parsed back.
+> - `KeyPath` is a structured array of segments (`["db", "port"]`); a dotted
+>   string is parsed once, only at the API boundary of `origin_of` / `get_path`;
+>   `origins()` joins paths directly while traversing.
+> - `Source::collect` returns `Layer { value, origin }`, so a layer's value and
+>   its site are produced together; `Source::kind` feeds `ByKind` ordering
+>   without needing `collect` first.
+> - Environment variables and the command line share one site per layer, and the
+>   site holds an index "path → original variable/argument name"; `describe(path)`
+>   looks it up. `Value` no longer stores a string per leaf.
+> - `MemorySource` returns a separate `MemorySite` rather than itself: native's
+>   default reference counting (`MOONBIT_TRIAL_DELETION=0`) does not collect
+>   cycles, so `MemorySource → Value → &MemorySource` would leak. JS / wasm-gc
+>   tracing GC is unaffected.
+> - `Value::with_origin(&OriginSite)` is for composite sources (one source reading
+>   several files), labelling subtrees with different sites; `attach_origin` only
+>   fills in `None` and never overwrites an existing origin.
+> - `&T` in MoonBit is a trait object and can only be used for traits; it is not
+>   a Rust borrow: there is no lifetime checking, and trait objects are kept alive
+>   by GC/RC. `&Path` does not work, since `Path` is a struct.
+> - The `SourceId` enum option was not adopted: each variant would still have to
+>   store a String, and Env/Cli would still look names up by path; a trait-object
+>   site solves both at once.
+> - `ConfigError::MergeConflict` currently has no code path that throws it: all
+>   three merge rules overwrite and do no type-conflict detection. The variant is
+>   kept for validation work later.
+> - `StringSource` / `BytesSource` map to `SourceKind::Custom` with labels
+>   `string` / `bytes`. They are neither files nor environment variables; giving
+>   `ByKind` an explicit tier is clearer than forcing them into `Memory`.
+> - `ByKind(order)` arrays list kinds from highest to lowest priority; unlisted
+>   kinds come last. The implementation processes sources from **lowest to
+>   highest** priority and then merges with `LastWins` — within one tier, later
+>   still wins.
+> - `Custom(fn)` receives "the already merged part" and "the next layer" and
+>   returns a new part. Origins are already attached to values, and a custom
+>   function is responsible for keeping them.
+> - `Config::origin_of` / `origins` keep `raise ConfigError`: without `build()`
+>   they merge on the spot, and a source resolution failure must be reported, not
+>   swallowed. A missing path returns `None`.
+> - Value errors do not carry origins yet (`TypeMismatch` still has three fields);
+>   that comes after the error types are extended. For now use `origin_of` to
+>   look it up.
 
-## 7. 文件、环境变量、命令行三个 source
+## 7. The three sources: file, environment variables, command line
 
-> **2026-10 实现时定的细节**
+Status: active | Affects: design/sources.md, design/cli-args.md, guides/layer-sources.md
+
+> **Details settled during the 2026-10 implementation**
 >
-> - 新增 `ConfigError::IoError(String)`：读不到外部数据（文件、环境变量）和「读到了但解析失败」是两回事，混进 `ParseError` 会让用户去查格式。消息以 `read error:` 开头，带路径或变量名。
-> - `FileSource` 的路径就是 `String`，和 `moonbitlang/x/fs` 的接口一致；`FileSource` 同时实现 `OriginSite` 和 `Locator`：`describe` 给文件路径，`locator` 就是它自己，`origin_of` 拿到的 `locator` 调 `read()` 就能重新读出同一份字节。没有另外拍一个平台 `Path` 类型——那会把平台类型带进 core。
-> - `@path` 技术上能进 core（试过 `moon test` 和 `js` / `wasm-gc` 都能过），但 `x/path` 自带 native stub 和 platform cfg，会把平台分派拖进 core；`Path` 也只是 `String` 的包装，`@fs` 只收 `String`。所以 core 里保持 `String`；`FileSource` 以后真要做 `join` / `normalize` 再在包内用 `Path`。
-> - 环境变量和命令行都不是「字节 + 格式」，类型推断没法交给 `Format`。推断规则放进 core 的 `Value::from_literal`，两个包共用一份：`true` / `false` → `Bool`，整数 → `Int64`（超出范围报错），带小数点或指数 → `Float`，其余 → 字符串。dotenv 的推断没并过来，因为它要按行号报错，合并会丢掉行号。
-> - `Config::attach_origin` 只补没有 site 的节点。`EnvSite` / `CliSite` 在 `collect()` 里建好「路径 → 原始名字」索引，整层共用一个 site；表节点也落在这个 site 上，`describe` 查不到时退回 `env:前缀*` / `cli:args`。
-> - `EnvSource` 只读指定前缀；`_` 和 `.` 都算层级，名字转小写。标量占了层级名、或两个变量落到同一个路径时报 `ParseError` 并点名两个变量——按 Map 遍历顺序猜赢家会让结果随平台变。变量名排序后才处理，保证同一份环境每次结果一致。
-> - 环境变量的大小写冲突在 Windows 上测不出来：系统本身不区分大小写，`set_env_var` 会直接覆盖同名变量。碰撞检测仍在代码里，用白盒测试直接喂 `assign` 验证。
-> - `CliSource` 的取值风格必须二选一：`Equals` 只认 `--key=value`，`Separate` 只认 `--key value`，不在一个来源里混用——混着支持会让 `--flag positional` 这种写法没法解释。短选项必须先登记，重复参数用 `with_array` 显式声明，位置参数用 `with_positional` 按「非选项参数」的顺序映射；解析规则和错误边界见 [cli-args.md](../design/cli-args.md)。
-> - 命令行标签只写参数名（`cli:--db-password`），不写值：密码不该因为来源追踪漏进日志。
-> - 新增的依赖 `moonbitlang/x` 手写进 `moon.mod`，没用 `moon add`（本仓库的约定）。
+> - New `ConfigError::IoError(String)`: failing to read external data (files,
+>   environment variables) is a different thing from "read it but failed to parse
+>   it"; mixing the former into `ParseError` would send users to inspect the
+>   format. The message starts with `read error:` and names the path or variable.
+> - `FileSource`'s path is just `String`, matching the `moonbitlang/x/fs`
+>   interface; `FileSource` implements both `OriginSite` and `Locator`:
+>   `describe` gives the file path, `locator` is itself, and a `locator` obtained
+>   from `origin_of` can call `read()` to read back the same bytes. No separate
+>   platform `Path` type was invented — that would drag platform types into core.
+> - `@path` can technically go into core (`moon test` and `js` / `wasm-gc` all
+>   passed), but `x/path` ships a native stub and platform cfg, which would drag
+>   platform dispatch into core; `Path` is only a wrapper around `String`, and
+>   `@fs` accepts only `String`. So core keeps `String`; if `FileSource` later
+>   really needs `join` / `normalize`, it can use `Path` inside its own package.
+> - Environment variables and the command line are not "bytes + format", so type
+>   inference cannot be delegated to `Format`. The inference rules live in core's
+>   `Value::from_literal`, shared by both packages: `true` / `false` → `Bool`,
+>   integers → `Int64` (error when out of range), decimal point or exponent →
+>   `Float`, everything else → string. dotenv's inference was not folded in,
+>   because it reports errors by line number and merging would lose the line
+>   numbers.
+> - `Config::attach_origin` only fills nodes without a site. `EnvSite` /
+>   `CliSite` build the "path → original name" index in `collect()`, sharing one
+>   site per layer; table nodes land on that site too, and `describe` falls back
+>   to `env:<prefix>*` / `cli:args` when the lookup fails.
+> - `EnvSource` reads only the given prefix; both `_` and `.` count as levels,
+>   and names are lowercased. A scalar occupying a level name, or two variables
+>   landing on the same path, reports `ParseError` naming both variables —
+>   guessing the winner by Map iteration order would make the result depend on
+>   the platform. Variables are sorted before processing, so the same environment
+>   gives the same result every time.
+> - Environment variable case collisions cannot be tested on Windows: the OS is
+>   itself case-insensitive, and `set_env_var` simply overwrites the variable of
+>   the same name. Collision detection stays in the code and is verified by
+>   white-box tests that feed `assign` directly.
+> - `CliSource`'s value style must be one of two: `Equals` only accepts
+>   `--key=value`, `Separate` only accepts `--key value`, never mixed in one
+>   source — supporting both would make `--flag positional` impossible to
+>   interpret. Short options must be registered first, repeated arguments are
+>   declared explicitly with `with_array`, and positional arguments are mapped
+>   with `with_positional` in the order of "non-option arguments"; parsing rules
+>   and error boundaries are in [cli-args.md](../design/cli-args.md).
+> - Command-line labels contain only the argument name (`cli:--db-password`),
+>   never the value: passwords should not leak into logs just because of origin
+>   tracking.
+> - The new dependency `moonbitlang/x` is written into `moon.mod` by hand rather
+>   than via `moon add` (this repository's convention).
 
-## 8. `String::compare` 先比长度
+## 8. `String::compare` compares length first
 
-> **2026-10 实测：MoonBit 的 `String::compare` 不是字典序，长度不同的字符串先比长度。**
-> `String::compare("z", "aa") < 0` 为真；`["db.host", "log.level", "feature.debug"].sort()` 得到
-> 按长度递增的顺序，不是字母序。影响：任何「按名字排序」的展示都不能直接依赖 `sort()`，
-> 需要字典序时得自己逐字符比较。环境变量的处理顺序只用它保证「确定」，不当作展示顺序。
+Status: active | Affects: none (implementation only)
 
-## 9. 校验
+> **Measured 2026-10: MoonBit's `String::compare` is not lexicographic; strings
+> of different lengths are compared by length first.**
+> `String::compare("z", "aa") < 0` is true; `["db.host", "log.level",
+> "feature.debug"].sort()` yields increasing length order, not alphabetical.
+> Impact: any display that "sorts by name" cannot rely on `sort()` directly and
+> must compare character by character when lexicographic order is needed. The
+> environment variable processing order uses it only to guarantee determinism,
+> not as a display order.
 
-> **2026-10 实现时定的细节**
+## 9. Validation
+
+Status: active | Affects: design/validate.md
+
+> **Details settled during the 2026-10 implementation**
 >
-> - 两条路：按键用 `Rule` 规则表，结构体用 `Validate` trait。两者共用 `ConfigError` 和
->   `check_int_range` / `check_string_len`，不各写一套。
-> - `validate` 遇错即停，和 `get_*` 一致；`validate_all` 返回 `Array[ConfigError]`，顺序和规则表一致。
-> - 必填项不单独做规则：任何规则取不到路径都会报 `MissingKey`，`get_*` / `extract_from` 本身也会报。
-> - 未知键只能按键查。`derive(FromJson)` 忽略结构体里没有的字段，也不提供钩子，结构体不知道外面多了什么；
->   `Rule::allowed_keys` 不写就不查，等于开关默认关。递归 strict schema 暂不做。
-> - 新增 `InvalidValue(path, 期望约束, 实际)` 和 `UnknownKey(path)`。`actual` 由规则给：类型不符写形状名，
->   长度不符写长度，自定义规则自己决定。密码类字段由规则负责脱敏，错误类型不打印原值。
-> - 不给 `get_*` 加范围变体，也不靠 `derive(FromJson)` 自动校验：前者让 API 膨胀，后者拿不到字段名、
->   约束和未知键。校验是显式的一步，调用方自己决定什么时候跑、失败后怎么处理。
-> - `Rule` 内部存 `(KeyPath, Value) -> ConfigError?`：组合规则（`allowed_keys`）需要在路径下面再拼一段，
->   只返回一个字符串不够定位到具体的键。`Rule::custom` 仍然只让用户返回 `String?`。
+> - Two paths: a `Rule` table for keys, a `Validate` trait for structs. Both
+>   share `ConfigError` and `check_int_range` / `check_string_len`, instead of
+>   each writing its own set.
+> - `validate` stops at the first error, consistent with `get_*`; `validate_all`
+>   returns `Array[ConfigError]` in the same order as the rule table.
+> - Required fields get no separate rule: any rule that cannot get a path reports
+>   `MissingKey`, and `get_*` / `extract_from` report it as well.
+> - Unknown keys can only be checked by key. `derive(FromJson)` ignores fields the
+>   struct does not have and offers no hook, because the struct does not know what
+>   is extra outside; `Rule::allowed_keys` checks only when written, so the switch
+>   defaults to off. Recursive strict schemas are out of scope for now.
+> - New `InvalidValue(path, expected constraint, actual)` and `UnknownKey(path)`.
+>   `actual` is supplied by the rule: a type mismatch writes the shape name, a
+>   length mismatch writes the length, and custom rules decide for themselves.
+>   Rules are responsible for redacting password-like fields; error types do not
+>   print the original value.
+> - No range variants are added to `get_*`, and no automatic validation via
+>   `derive(FromJson)`: the former bloats the API, the latter cannot get field
+>   names, constraints and unknown keys. Validation is an explicit step, and the
+>   caller decides when to run it and what to do on failure.
+> - `Rule` internally stores `(KeyPath, Value) -> ConfigError?`: composite rules
+>   (`allowed_keys`) need to append another segment below the path, and returning
+>   only a string would not locate the specific key. `Rule::custom` still only
+>   lets users return `String?`.
 
-## 10. 浮点加宽与带来源快照
+## 10. Float widening and snapshots with origins
 
-> **2026-10 定稿：默认加宽整数，严格模式单独提供；快照和 `origins()` 共用叶子口径。**
+Status: active | Affects: design/design.md, design/sources.md
+
+> **Finalized 2026-10: widen integers by default, offer strict mode separately;
+> snapshots and `origins()` share the same leaf definition.**
 >
-> - `get_float` 接受 `Int` 并 `to_double()`：整数可以作为浮点字段的数值加宽，
->   超出 2^53 时按浮点精度近似。反方向（`Float` → 整数）仍报 `TypeMismatch`，不截断。
-> - 需要「只收 `Float`」的调用方用 `get_float_strict`。不把严格做成默认，因为 JSON 里的
->   `1` 本来就是合法整数，默认拒绝会很意外；加宽只在 `Int → Float` 一个方向发生。
-> - `Config::snapshot()` 返回 `Array[Entry]`，每条带 `path` / `value` / `origin`。表节点递归、
->   数组当叶子，和 `origins()` 用同一套遍历，避免两套「什么算叶子」的口径。
-> - `origin` 是 `Origin?`：`Layer::untracked` 的来源没有可报告的对象，导出时保留 `None`，
->   不伪造 label。`origins()` 仍只返回有来源的叶子。
+> - `get_float` accepts `Int` and calls `to_double()`: an integer can widen to
+>   the numeric value of a float field, approximated at float precision beyond
+>   2^53. The reverse direction (`Float` → integer) still reports `TypeMismatch`
+>   and does not truncate.
+> - Callers that need "`Float` only" use `get_float_strict`. Strictness is not
+>   the default because `1` in JSON is a legitimate integer, and rejecting it by
+>   default would be surprising; widening happens only in the `Int → Float`
+>   direction.
+> - `Config::snapshot()` returns `Array[Entry]`, each with `path` / `value` /
+>   `origin`. Table nodes recurse, arrays count as leaves, using the same
+>   traversal as `origins()`, so there are not two definitions of "what counts as
+>   a leaf".
+> - `origin` is `Origin?`: layers from `Layer::untracked` have no reportable
+>   object, so the export keeps `None` instead of faking a label. `origins()`
+>   still returns only leaves that have an origin.
 
-## 11. 手写 `FromConfig` 而不是 derive 标签
+## 11. Hand-written `FromConfig` instead of derive labels
 
-> **2026-11 定稿：第二条结构体提取路径是手写 trait + `Getter`，不做 derive 也不做外部生成。**
+Status: partially superseded (#13 changes the default extraction order) | Affects: design/extract.md, guides/choose-extraction.md
+
+> **Finalized 2026-11: the second struct extraction path is a hand-written trait
+> + `Getter`; neither derive nor external generation.**
 >
-> - derive(FromJson) 没有字段级定制：键名跟字段名锁死、没有默认值、64 位要包 `Int64Text`。
->   MoonBit 不支持自定义 derive 和宏（`#derive` 限定内置 trait；用户属性 `#tool.attr(...)`
->   会被编译器忽略，只能喂给解析源码的外部代码生成器），内置 derive 的
->   `fields(x(rename="..."))` 官方标注 unstable 且无默认值——都不是可依赖的地基。
-> - 所以采用仓库已有的 `Validate` 模式：`pub(open) trait FromConfig`（`from_config(Getter)`），
->   标签是调用点里的普通字符串参数。手写 impl 换 per-field 控制力， MoonBit 没有反射，
->   字段和标签的对应关系只能在调用点建立，标签等于字段名时也要写一遍。
-> - `Getter` 与 `get_*` 同口径（严格类型、错误带完整前缀、`MissingKey`/`TypeMismatch`/
->   范围 `ParseError`）。默认值只在**键缺失**时生效，键存在但类型不符照常报错——
->   静默落默认会把配置错误藏起来。`opt_*` 把缺失和 `null` 都当 `None`。
-> - `Getter` 直接读 `Value`，不走 Json 往返、没有探针，性能比 derive 路径好；64 位
->   字段原生可读，`Int64Text` 只属于 derive 路径。
-> - 两条路径用 `json_format.json_field` 在字段级混搭：手写结构体的某个字段可以一行
->   委托给 derive(FromJson) 的子结构体，严格探针照常生效。分工：默认 derive(FromJson)，
->   需要控制力才手写。
+> - derive(FromJson) has no field-level customization: key names are locked to
+>   field names, there are no defaults, and 64-bit values must be wrapped in
+>   `Int64Text`. MoonBit supports neither custom derive nor macros (`#derive` is
+>   limited to built-in traits; user attributes `#tool.attr(...)` are ignored by
+>   the compiler and only feed external code generators that parse the source),
+>   and the built-in derive's `fields(x(rename="..."))` is officially marked
+>   unstable and has no default values — none of these is a foundation to rely
+>   on.
+> - So it adopts the `Validate` pattern the repository already has: `pub(open)
+>   trait FromConfig` (`from_config(Getter)`), with labels as ordinary string
+>   arguments at the call site. Hand-written impls trade boilerplate for
+>   per-field control; MoonBit has no reflection, so the field-to-label mapping
+>   can only be established at the call site, and the label is written out even
+>   when it equals the field name.
+> - `Getter` uses the same rules as `get_*` (strict types, errors with the full
+>   prefix, `MissingKey` / `TypeMismatch` / range `ParseError`). Defaults apply
+>   only when the **key is missing**; an existing key of the wrong type still
+>   errors — silently falling back to a default would hide configuration errors.
+>   `opt_*` treats both missing and `null` as `None`.
+> - `Getter` reads `Value` directly, with no Json round trip and no probe, so it
+>   is faster than the derive path; 64-bit fields are natively readable, and
+>   `Int64Text` belongs only to the derive path.
+> - The two paths mix at the field level via `json_format.json_field`: one field
+>   of a hand-written struct can delegate in one line to a sub-struct using
+>   derive(FromJson), with the strict probe still in effect. According to the
+>   plan at the time, derive(FromJson) was the default and hand-writing was for
+>   control; that default order has been adjusted by #13.
 
-## 12. serde 结合走独立包，不进 core
+## 12. serde integration in its own package, not in core
 
-> **2026-11 定稿：`serde_bridge` 是根包，moonfig core 不依赖 serde。**
+Status: active | Affects: design/extract.md
+
+> **Finalized 2026-11: `serde_bridge` is a root package, and moonfig core does
+> not depend on serde.**
 >
-> - serde（`moonbit-community/serde.mbt@0.3.1`）的 `Deserializer` 是格式后端 trait，
->   moonfig 的 `Value` 树天然就是一个自描述格式——给 `Value` 写一个后端，任何
->   serde 类型即可从配置提取，类型侧零改动（手写或 serde 生成器生成的
->   `Deserialize` 都能消费）。
-> - 放根包而不是 `core/format/serde`：它不是文本格式（不产出 `Value`），是提取
->   后端；也避免给 core 增加第三方依赖——core 保持零依赖，不用 serde 的用户
->   不被牵连。moon.mod 引入 serde 后所有 moonfig 消费者的依赖树会多 serde
->   及其 derive 生成器的依赖（parser/async），是引入该功能的固有代价。
-> - 语义对齐 serde 自带 `Value` 后端 + moonfig 严格性：无任何字符串→数字转换，
->   bytes 只收 `Bytes` 节点，double 加宽整数。未知字段跳过（与 serde 及
->   derive 路径一致，严格未知键请用 `Rule::allowed_keys`）。
-> - `DeError` → `ConfigError` 在入口翻译：`MissingField`→`MissingKey`、
->   `InvalidType`→`TypeMismatch`、`InvalidValue`→`InvalidValue`，键名接前缀；
->   不引入新的错误变体。
-> - serde 的字段协议按游标快照 Table：`skip_value` 只推游标不解析，未知键
->   零成本跳过。
+> - serde (`moonbit-community/serde.mbt@0.3.1`)'s `Deserializer` is a format
+>   backend trait, and moonfig's `Value` tree is naturally a self-describing
+>   format — write one backend for `Value` and any serde type can be extracted
+>   from configuration with zero type-side changes (both hand-written and
+>   serde-generator-produced `Deserialize` can be consumed).
+> - It lives at the root package rather than `core/format/serde`: it is not a
+>   text format (it does not produce `Value`) but an extraction backend; and it
+>   avoids adding a third-party dependency to core — core stays dependency-free,
+>   and users who do not use serde are not dragged in. Once serde is in
+>   moon.mod, every moonfig consumer's dependency tree gains serde and its derive
+>   generator's dependencies (parser/async), which is the inherent cost of the
+>   feature.
+> - Semantics align with serde's own `Value` backend plus moonfig strictness: no
+>   string→number conversion at all, bytes accept only `Bytes` nodes, doubles
+>   widen integers. Unknown fields are skipped (consistent with serde and the
+>   derive path; for strict unknown keys use `Rule::allowed_keys`).
+> - `DeError` → `ConfigError` is translated at the entry: `MissingField`→
+>   `MissingKey`, `InvalidType`→`TypeMismatch`, `InvalidValue`→`InvalidValue`,
+>   with key names prefixed; no new error variants are introduced.
+> - serde's field protocol snapshots the Table by cursor: `skip_value` only
+>   advances the cursor without parsing, so unknown keys are skipped at zero cost.
+
+## 13. Default order of extraction paths
+
+Status: active (supersedes #11's default order) | Affects: design/extract.md, guides/choose-extraction.md
+
+> **Revised 2026-11: `FromConfig` is the default extraction path, and
+> `derive(FromJson)` drops to an optional adapter.**
+>
+> - The core of a general configuration library is multiple sources, merging,
+>   validation and origin tracking; extraction is only one exit on the output
+>   side and should not let three parallel paths define the library's identity.
+> - `FromConfig` lives in core, has zero dependencies, reads `Value` directly, and
+>   shares the same semantics as `get_*`; the derive path goes through
+>   `Value → Json` and the standard library's `FromJson`, with strictness
+>   simulated by probes, so it is not the same set of rules as the other paths
+>   and is therefore no longer the default recommendation.
+> - The derive path is kept: for types that already implement `FromJson` it is a
+>   zero-boilerplate entry, and its cost is isolated by the `json_format` package
+>   boundary. Documentation no longer puts it on par with `FromConfig`.

@@ -1,148 +1,165 @@
-﻿# moonfig 路线图
+# moonfig roadmap
 
-记录「按什么顺序做、每部分做完能验收什么」，不是契约，可以随时改。
+Records "in what order things are done, and what acceptance each part has when
+done". Not a contract; it can change at any time. The roadmap table in the README
+is the public summary, and its statuses and entries stay in sync with this
+document.
 
-设计文档见 [docs/design/design.md](../design/design.md)。
+Design docs: [docs/design/design.md](../design/design.md).
 
-状态分三档：✅ 已完成（进入维护）、🚧 进行中、⬜ 未进行。
+Status has three levels: ✅ done (in maintenance), 🚧 in progress, ⬜ not started.
 
 ---
 
-## 核心　🚧
+## Core　✅
 
-**方向**：配置只在内存里存在——统一表示、按键合并、按 key 取值。不接触任何外部环境，因此在所有 target 上都能编译。
+**Direction**: Configuration exists only in memory — one representation, merge by key, read by key. It touches no external environment, so it compiles on every target.
 
-- [x] `Value` / `ValueKind`：一份表示覆盖所有格式的配置值
-- [x] 点号路径取值
-- [x] 合并规则：按键合并、数组整体替换
-- [x] `Config` 构建器与 `get_string` / `get_int` / `get_bool` / `get_float`
-- [x] 错误处理：`MissingKey` / `TypeMismatch` / `ParseError`
-- [x] 按结构体取值（`derive(FromJson)`）
-- [x] Source 追踪：`origin_of` / `origins` 查某个键最终来自哪一层，见 [sources.md](../design/sources.md#来源追踪)
-- [ ] 取值错误带上来源（`TypeMismatch` 现在还是三个字段）
+- [x] `Value` / `ValueKind`: one representation covering configuration values of every format
+- [x] Dotted-path reads
+- [x] Merge rules: merge by key, arrays replaced wholesale
+- [x] `Config` builder with `get_string` / `get_int` / `get_bool` / `get_float`
+- [x] Error handling: `MissingKey` / `TypeMismatch` / `ParseError`
+- [x] Struct reads (`FromConfig` / `derive(FromJson)`)
+- [x] Origin tracking: `origin_of` / `origins` show which layer a key finally came from, see [sources.md](../design/sources.md#origin-tracking)
 
-**为什么还是进行中**：追踪已经落到 `Value` 和 `Config` 上，剩下的是把来源写进取值错误的消息里；这会改 `ConfigError` 的形状，等错误类型一起收口。
+### Follow-ups
 
-### 最初的推进顺序
+The core features are done; the item below is a maintenance-period enhancement.
 
-| 步 | 内容 | 验收 |
+- [ ] Value errors carry origins (`TypeMismatch` still has three fields)
+
+Tracking is already on `Value` and `Config`; writing origins into value error messages would change the shape of `ConfigError`, so it waits until the error types are settled together.
+
+### Initial implementation order
+
+| Step | Content | Acceptance |
 |---|---|---|
-| 1 | `value.mbt` + `error.mbt` | 构造几个 `Value`，`debug_inspect` 形状对 |
-| 2 | `merge.mbt` | 嵌套 `Table` 验证「后覆盖前、表逐 key 合、数组整体换」 |
-| 3 | `source.mbt` + `config.mbt` | 两个 `MemorySource` 合起来，`get_*` 取到值；缺 key 报 `MissingKey` |
-| 4 | `core/format/json_format/` | `Json` 文本 → `Value`，`Int` / `Float` 按有无小数点分开 |
-| 5 | `extract` | 大整数端到端不丢 |
+| 1 | `value.mbt` + `error.mbt` | construct a few `Value`s and check the `debug_inspect` shape |
+| 2 | `merge.mbt` | nested `Table` verifies "later overwrites earlier, tables merge key by key, arrays replaced wholesale" |
+| 3 | `source.mbt` + `config.mbt` | two `MemorySource`s merged, `get_*` reads values; a missing key reports `MissingKey` |
+| 4 | `core/format/json_format/` | `Json` text → `Value`, `Int` / `Float` separated by whether there is a decimal point |
+| 5 | `extract` | large integers survive end to end |
 
-第 1~3 步做完，库就能用了（只是目前只有 `MemorySource`）。第 4、5 步各是独立的增量。
-
----
-
-## 多格式　🚧
-
-**方向**：把各种格式的配置读成同一份 `Value`。格式之间可以自由替换，声明不用改。
-
-- [x] JSON 文本（`core/format/json_format/` 包）
-- [x] TOML（`core/format/toml_format/` 包，依赖 `moonbit-community/toml`）
-- [x] YAML（`core/format/yaml_format/` 包，依赖 `moonbit-community/yaml`）
-- [x] `.env` 文本（`core/format/dotenv_format/` 包）
-- [x] INI（`core/format/ini_format/` 包）
-- [x] XML（`core/format/xml_format/` 包，依赖 `Milky2018/xml`）
-- [x] CBOR（`core/format/cbor_format/` 包，依赖 `2515050242/cbor`）
-
-每加一种格式只做一件事：格式 → `Value`。合并、取值、校验都复用 `core/`，不为格式写第二套逻辑。
-
-**格式说的是内容怎么写，Source 说的是从哪读。** `.env` 文件是一种格式，环境变量是一种 Source，两件事分开做：`EnvSource` 读环境变量时不需要知道它最后变成哪种格式。
-
-**CBOR 是二进制格式，体积小，MCU 上常见。** 它也是检验 `Value` 表示能力的好例子——而这个检验的结果是：`Value` 原来少了一个形状。CBOR 有字节串，`Value` 原来没地方放它，所以 `ValueKind` 现在多了一个 `Bytes` 分支，`get_bytes` 把它原样取出来。其余的部分一一对得上：整数、字符串、数组、映射都不用特例。
-
-**代价**：YAML、TOML、XML 和 CBOR 都依赖第三方解析器（`moonbit-community/yaml`、`moonbit-community/toml`、`Milky2018/xml`、`2515050242/cbor`），所以每种格式单独一个包，`moon.pkg` 写各自的 `import`，`core/` 和已完成的 `json_format`、`ini_format`、`dotenv_format` 不受影响。
-
-**JSON、INI 和 `.env` 都是自己写的解析器，没有第三方依赖。** 三者都只用 MoonBit 标准库的包：JSON 走 `@json`，INI 和 `.env` 走 `@string` 里的 `parse_int64` / `parse_double`。INI 的类型猜法写在包的文档注释里：段落变层级、引号强制字符串、`;` 和 `#` 只在整行开头算注释；`.env` 的规则也写在包文档里：`export` 前缀可选、键名里的 `.` 变层级、单引号原样保留、双引号认转义、`#` 前面有空白才算行尾注释、不做变量展开。
-
-**YAML 的语法交给 `moonbit-community/yaml`，本库只做 `Yaml` → `Value` 的转换。** 包文档写明了边界：只接受一个文档，空文件、空文档、只有注释的文件以及根节点为 `null` 的文件得到空表；根节点通常应是映射；整数超出 `Int64` 报错，不静默降级成浮点。
-
-**TOML 的语法交给 `moonbit-community/toml`，本库只做 `TomlValue` → `Value` 的转换。** 包文档写明了边界：根节点必须是一张表；数组里混着不同类型时报错（TOML 要求同类型数组）；日期时间在 `Value` 里没有对应形状，按原文当字符串存；大整数保持 `Int64`。
-
-**XML 的语法交给 `Milky2018/xml`，本库只做元素树 → `Value` 的转换。** XML 没有「键值」这回事，映射规则是本库定的，写在包文档里：根元素只是壳，子元素落在顶层；同名兄弟元素收成数组；属性在 `@` 前缀的键上；混合内容在 `#text` 上；CDATA 是字面文字，一定是字符串（这也是 XML 本身给「我要字符串」的办法）。
-
-**CBOR 的语法交给 `2515050242/cbor`，本库只做 `CborValue` → `Value` 的转换。** 包文档写明了边界：根节点必须是一张映射；映射的键必须是文本字符串（CBOR 允许整数键，但配置里的键就是路径，路径是文本，整数键报错而不是偷偷转成字符串——那样整数键 `1` 会和字符串键 `"1"` 撞车）；标签被剥掉，只留里面的值（`Value` 没地方放标签）；`undefined` 报错（它和 `null` 不是一回事，`null` 落到 `Value::null()`）；字节串原样保留在 `Value::bytes` 里，`get_bytes` 取出原始字节；整数超出 `Int64` 报错，不静默降级成浮点；半精度和单精度浮点都展宽到 `Double`。
+After steps 1–3 the library is usable (only `MemorySource` exists for now). Steps 4 and 5 are independent increments.
 
 ---
 
-## 外部 Source　✅
+## Many formats　✅
 
-**方向**：把外部世界读成配置。IO 只发生在这里，`core/` 那一层看不到文件和环境变量。
+**Direction**: Read configuration in every format into the same `Value`. Formats can be swapped freely without changing declarations.
 
-- [x] `FileSource`：读配置文件，格式交给上一层判断
-- [x] `EnvSource`：读环境变量
-- [x] `CliSource`：读命令行参数
-- [x] 多个 Source 任意组合，优先级由加入顺序决定
+- [x] JSON text (`core/format/json_format/` package)
+- [x] TOML (`core/format/toml_format/` package, depends on `moonbit-community/toml`)
+- [x] YAML (`core/format/yaml_format/` package, depends on `moonbit-community/yaml`)
+- [x] `.env` text (`core/format/dotenv_format/` package)
+- [x] INI (`core/format/ini_format/` package)
+- [x] XML (`core/format/xml_format/` package, depends on `Milky2018/xml`)
+- [x] CBOR (`core/format/cbor_format/` package, depends on `2515050242/cbor`)
 
-### 环境变量是这一段里坑最多的
+Each new format does one thing only: format → `Value`. Merging, reading and validation all reuse `core/`, with no second implementation per format.
 
-环境变量全是字符串：
+**A format describes how the content is written; a Source describes where it is read from.** An `.env` file is a format, environment variables are a Source, and the two are done separately: `EnvSource` does not need to know which format the environment variables will eventually become when it reads them.
 
-- **类型推断必须在这一步做完**（`"5432"` → `Int`，`"true"` → `Bool`）。等到按结构体取值那步就晚了——标准库的 `Bool::from_json` 和 `Double::from_json` 都拒收字符串。
-  - 落地方式：`core` 提供 `Value::from_literal`，`EnvSource` / `CliSource` 共用，不再各写一份。
-- 分隔符约定要定：`_` 变 `.`？大小写敏感？
-  - 落地方式：`_` 和 `.` 都算层级，键名统一转小写；只差大小写的两个变量落到同一个路径时报错。
-- 前缀、空值、列表值怎么处理。
-  - 落地方式：构造时给前缀（`EnvSource::all()` 读全部）；空值是空字符串；列表不拆，整串留作字符串。
+**CBOR is a binary format, small in size, common on MCUs.** It is also a good test of `Value`'s representational power — and the result of that test was that `Value` was missing one shape. CBOR has byte strings, and `Value` had nowhere to put them, so `ValueKind` now has a `Bytes` branch, and `get_bytes` extracts it as-is. Everything else lines up one to one: integers, strings, arrays and maps need no special case.
 
----
+**Cost**: YAML, TOML, XML and CBOR all depend on third-party parsers (`moonbit-community/yaml`, `moonbit-community/toml`, `Milky2018/xml`, `2515050242/cbor`), so each format gets its own package with its own `import` in `moon.pkg`, and `core/` plus the finished `json_format`, `ini_format` and `dotenv_format` are unaffected.
 
-## 校验　✅
+**JSON, INI and `.env` all use hand-written parsers with no third-party dependency.** All three only use MoonBit standard library packages: JSON goes through `@json`, INI and `.env` go through `parse_int64` / `parse_double` in `@string`. INI's type guessing is documented in the package doc comment: sections become levels, quotes force a string, and `;` and `#` only count as comments at the start of a line; `.env`'s rules are in the package docs too: the `export` prefix is optional, `.` in key names becomes a level, single quotes are kept as-is, double quotes interpret escapes, `#` only starts a trailing comment when preceded by whitespace, and there is no variable expansion.
 
-**方向**：配置读进来先验一遍，问题在启动时暴露，而不是在业务代码跑了一半才发现。
+**YAML syntax is delegated to `moonbit-community/yaml`; this library only converts `Yaml` → `Value`.** The package docs state the boundaries: only one document is accepted; an empty file, an empty document, a file with only comments, or a file whose root node is `null` yields an empty table; the root node is usually expected to be a mapping; integers beyond `Int64` error rather than silently degrading to floats.
 
-- [x] 必填项缺失
-- [x] 取值范围校验（端口范围、字符串长度上限）
-- [x] 未知键是否报错，做成开关
-- [x] 校验规则由用户自己写
-- [x] 校验失败给出键名、期望值、实际值
+**TOML syntax is delegated to `moonbit-community/toml`; this library only converts `TomlValue` → `Value`.** The package docs state the boundaries: the root node must be a table; an array mixing different types errors (TOML requires homogeneous arrays); date-times have no corresponding shape in `Value` and are stored as strings from their original text; large integers stay `Int64`.
 
-**落地方式**：按键用规则表，结构体用 `Validate`，两条路共用 `ConfigError` 和检查函数。必填项靠 `MissingKey`，未知键靠 `Rule::allowed_keys`（不写就不查）。详见 [validate.md](../design/validate.md)。
+**XML syntax is delegated to `Milky2018/xml`; this library only converts the element tree → `Value`.** XML has no notion of "key/value", and the mapping rules are this library's, written in the package docs: the root element is just a shell and its children land at the top level; sibling elements with the same name become an array; attributes go on keys with the `@` prefix; mixed content goes on `#text`; CDATA is literal text and always a string (which is also XML's own way of saying "I want a string").
+
+**CBOR syntax is delegated to `2515050242/cbor`; this library only converts `CborValue` → `Value`.** The package docs state the boundaries: the root node must be a map; map keys must be text strings (CBOR allows integer keys, but configuration keys are paths, paths are text, and integer keys error instead of being quietly converted to strings — that way integer key `1` would collide with string key `"1"`); tags are stripped and only the value inside is kept (`Value` has nowhere to put a tag); `undefined` errors (it is not the same thing as `null`, and `null` becomes `Value::null()`); byte strings are kept as-is in `Value::bytes` and `get_bytes` retrieves the raw bytes; integers beyond `Int64` error rather than silently degrading to floats; half and single precision floats both widen to `Double`.
 
 ---
 
-## 自动发现格式　✅
+## External Source　✅
 
-**方向**：给一个文件，不指定格式也能读进来。设计见 [format-detect.md](../design/format-detect.md)。
+**Direction**: Read the outside world into configuration. IO happens only here; the `core/` layer sees no files or environment variables.
 
-- [x] 按后缀判断（`.json` / `.toml` / `.yaml`）
-- [x] 后缀缺失或不可靠时按内容判断
-- [x] 判断失败时报错，并列出支持的格式
-- [x] 解析失败时给出位置和原因
+- [x] `FileSource`: read configuration files, with the format decided by the layer above
+- [x] `EnvSource`: read environment variables
+- [x] `CliSource`: read command-line arguments
+- [x] Any combination of multiple Sources, with priority determined by insertion order
 
-**落地方式**：`Format` 自己声明 `suffixes` / `sniff` / `decode_path`，`Detector` 负责归一化后缀、检查重复声明和按候选顺序做内容判断；`FileSource::auto` 负责把路径和字节交给检测器。已知后缀解析失败时直接报错，不换候选。
+### Environment variables are the most treacherous part of this section
 
----
+Environment variables are all strings:
 
-## 热更新（轮询）　✅
-
-**方向**：配置文件变了就重新生效，不必重启进程。设计见 [hot-reload.md](../design/hot-reload.md)。
-
-- [x] 监听文件变化：比较文件内容，不看 mtime
-- [x] 重新读取并合并
-- [x] 通过回调通知使用方
-- [x] 新配置解析失败或校验不通过时保留旧配置
-
-**落地方式**：`build_live()` 留下来源清单，`reload()` 成功才替换快照；`hot_reload` 的 `watch()` 登记回调，由调用方调用 `Watcher::poll()` 驱动一轮检测。`interval` 只是建议值，库不内建定时器。
-
-**后续**：
-
-- [ ] 内建定时器或 OS 文件事件（inotify / kqueue / ReadDirectoryChangesW）
-- [ ] 环境变量和命令行的变化监听；目前没有可靠事件，仍手动 `reload()`
+- **Type inference must be finished at this step** (`"5432"` → `Int`, `"true"` → `Bool`). Waiting until the struct read step is too late — the standard library's `Bool::from_json` and `Double::from_json` both reject strings.
+  - How it lands: `core` provides `Value::from_literal`, shared by `EnvSource` / `CliSource` instead of each writing its own.
+- The separator convention has to be decided: does `_` become `.`? Is it case sensitive?
+  - How it lands: both `_` and `.` count as levels, and key names are uniformly lowercased; two variables differing only in case that land on the same path error.
+- How prefixes, empty values and list values are handled.
+  - How it lands: the prefix is given at construction (`EnvSource::all()` reads everything); an empty value is the empty string; lists are not split and the whole string stays a string.
 
 ---
 
-## 依赖关系
+## Validation　✅
 
-```
-核心 ──→ 多格式 ──→ 外部 Source ──→ 自动发现格式 ──→ 热更新
+**Direction**: Validate configuration on the way in, so problems surface at startup rather than halfway through business code.
+
+- [x] Missing required fields
+- [x] Range validation (port ranges, string length limits)
+- [x] Whether unknown keys error, as a switch
+- [x] Validation rules written by users themselves
+- [x] Validation failures give the key name, expected value and actual value
+
+**How it lands**: a rule table for keys, `Validate` for structs, both paths sharing `ConfigError` and the check functions. Required fields rely on `MissingKey`; unknown keys rely on `Rule::allowed_keys` (no check when not written). See [validate.md](../design/validate.md).
+
+---
+
+## Format detection　✅
+
+**Direction**: Given a file, read it without specifying a format. Design in [format-detect.md](../design/format-detect.md).
+
+- [x] Decide by suffix (`.json` / `.toml` / `.yaml`)
+- [x] Decide by content when the suffix is missing or unreliable
+- [x] Error when detection fails, listing the supported formats
+- [x] Give position and reason when parsing fails
+
+**How it lands**: `Format` declares its own `suffixes` / `sniff` / `decode_path`; `Detector` normalizes suffixes, checks duplicate declarations and does content detection in candidate order; `FileSource::auto` hands the path and bytes to the detector. When parsing fails for a known suffix, it errors directly without trying another candidate.
+
+---
+
+## Hot reload (polling)　✅
+
+**Direction**: When a configuration file changes it takes effect again without restarting the process. Design in [hot-reload.md](../design/hot-reload.md).
+
+- [x] Watch file changes: compare file content, not mtime
+- [x] Re-read and re-merge
+- [x] Notify the consumer through a callback
+- [x] Keep the old configuration when the new one fails to parse or validate
+
+**How it lands**: `build_live()` keeps the source list, and `reload()` replaces the snapshot only on success; `hot_reload`'s `watch()` registers callbacks, and the caller drives one round of checks with `Watcher::poll()`. `interval` is only a suggestion; the library has no built-in timer.
+
+**Follow-ups**:
+
+- [ ] Built-in timer or OS file events (inotify / kqueue / ReadDirectoryChangesW)
+- [ ] Watching changes to environment variables and the command line; there are no reliable events yet, so `reload()` is still manual
+
+---
+
+## Future directions　⬜
+
+- [ ] Remote configuration support: fetch configuration files over HTTP/URL, with timeout retries and a local fallback.
+- [ ] Encrypted storage: encrypted parsing and secure storage of sensitive configuration fields.
+- [ ] Preprocessed data: process existing configuration text or data without changing the source data.
+
+---
+
+## Dependencies
+
+```text
+Core ──→ Many formats ──→ External Source ──→ Format detection ──→ Hot reload
   │
-  └──→ 校验
+  └──→ Validation
 ```
 
-「校验」和「多格式」互不阻塞，可以先做任意一个。「自动发现格式」要等格式多于一种才有意义。
+"Validation" and "Many formats" do not block each other; either can be done first. "Format detection" only makes sense once there is more than one format.
 
+How the documentation system changes is in [doc-system.md](doc-system.md).

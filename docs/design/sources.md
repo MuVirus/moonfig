@@ -1,17 +1,21 @@
-# Source 与 package 布局
+# Source and package layout
 
-两层接口，各管一件事：
+> **Conclusion**: `Source` owns "where to read from"; `Format` owns "how to parse"; the origin object rides on `Value` for tracking.
+> **Authority**: Normative — interface responsibilities, package boundaries and origin semantics follow this document; signatures follow `.mbti`.
+> **Out of scope**: Steps are in [layer-sources.md](../guides/layer-sources.md); history is in [decisions.md](../decisions/decisions.md).
 
-- `Source` 管「从哪读」，产出一层配置和这层的来源（`Layer`）。
-- `Format` 管「怎么解析」，把一段字节解成 `Value`。
+Two layers of interface, each with one job:
 
-`Source` 是 `core/` 定义的 trait：
+- `Source` owns "where to read from", producing one config layer and that layer's origins (`Layer`).
+- `Format` owns "how to parse", decoding a piece of bytes into a `Value`.
+
+`Source` is a trait defined in `core/`:
 
 ```moonbit
 pub(open) trait Source {
   fn collect(Self) -> Layer raise ConfigError
-  fn kind(Self) -> SourceKind = _   // 默认 Custom
-  fn raw_locator(Self) -> &Locator? = _   // 默认 None；热更新用
+  fn kind(Self) -> SourceKind = _   // defaults to Custom
+  fn raw_locator(Self) -> &Locator? = _   // defaults to None; used by hot reload
 }
 
 pub struct Layer {
@@ -20,65 +24,65 @@ pub struct Layer {
 }
 ```
 
-`Config::add` 只认 `Source`；默认按加入顺序合并，规则见 [design.md](design.md#3-配置对象与取值)。
-`Source::kind` 给 `ByKind` 排序用，不需要先 `collect`。`Source::raw_locator` 给热更新用：
-文件来源返回可重读的 `Locator`，即使它的键被后面的来源覆盖，改文件仍然能触发重读；见
-[hot-reload.md](hot-reload.md#什么算变化)。
+`Config::add` only accepts `Source`; by default it merges in insertion order, rules in [design.md](design.md#3-config-object-and-getters).
+`Source::kind` feeds `ByKind` ordering without calling `collect` first. `Source::raw_locator` serves hot reload:
+a file source returns a re-readable `Locator`, so even if its keys are overwritten by a later source, editing the file still triggers a reread; see
+[hot-reload.md](hot-reload.md#what-counts-as-a-change).
 
-## 六种 Source
+## Six kinds of Source
 
-- `MemorySource`：程序内已经构造好的 `Value`，用来写默认值、测合并规则。
-- `StringSource`：一段文本 + 一个 `Format`。
-- `BytesSource`：一段字节 + 一个 `Format`。
-- `FileSource`：路径 + 一个 `Format`，自己读文件。
-- `EnvSource`：读进程环境变量。
-- `CliSource`：读命令行参数。
+- `MemorySource`: a `Value` already built in the program, for defaults and for testing merge rules.
+- `StringSource`: a piece of text + a `Format`.
+- `BytesSource`: a piece of bytes + a `Format`.
+- `FileSource`: a path + a `Format`; reads the file itself.
+- `EnvSource`: reads process environment variables.
+- `CliSource`: reads command-line arguments.
 
-没有 `JsonSource`、`TomlSource` 这类类型。它们只是「字符串 + 某种格式」，写成 `StringSource` 加 `JsonFormat` 就够了；每种格式再包一个 Source，只会让「格式」和「从哪读」继续混在一起。
+There is no `JsonSource` or `TomlSource` type. They are just "a string + some format", and `StringSource` plus `JsonFormat` is enough; wrapping another Source per format would only keep mixing "format" and "where to read from".
 
-`EnvSource`、`CliSource` 不用 `Format`：它们的输入是键值对和 argv，不是一段文本或字节。
-它们和 `dotenv_format` 一样要猜类型，但猜法必须跨包共用，所以核心提供 `Value::from_literal`：
+`EnvSource` and `CliSource` do not use `Format`: their input is key-value pairs and argv, not a piece of text or bytes.
+They guess types like `dotenv_format`, but the guessing must be shared across packages, so the core provides `Value::from_literal`:
 
 ```moonbit
 pub fn Value::from_literal(StringView) -> Value raise ConfigError
 ```
 
-`true` / `false` → `Bool`，整数 → `Int64`，带小数点或指数的 → `Float`，其余 → 字符串；
-整数超出 `Int64` 报 `ParseError`，不静默降级。类型推断必须在这一层做完，等到按结构体取值时，
-标准库的 `Bool::from_json` / `Double::from_json` 都拒收字符串。
+`true` / `false` → `Bool`, integers → `Int64`, anything with a decimal point or exponent → `Float`, the rest → string;
+an integer outside `Int64` raises `ParseError`, never silently degrading. Type inference must finish at this layer: by the time values are read into structs,
+the standard library's `Bool::from_json` / `Double::from_json` reject strings.
 
-`EnvSource` 的规则：只读指定前缀的变量，前缀不参与键名；`_` 和 `.` 都算层级，键名统一转小写；
-整层共用一个 site，site 里存「路径 → 变量名」索引，`origin_of("db.port")` 能指出是
-`APP_DB_PORT`。标量占了层级名、或两个变量落到同一个路径时报 `ParseError`，不按遍历顺序猜赢家。
+`EnvSource` rules: only variables with the given prefix are read, and the prefix is not part of the key; both `_` and `.` count as hierarchy, and keys are lowercased;
+the whole layer shares one site, which stores a "path → variable name" index, so `origin_of("db.port")` can point at
+`APP_DB_PORT`. If a scalar occupies a hierarchy name, or two variables land on the same path, it raises `ParseError` rather than guessing a winner by traversal order.
 
-`CliSource` 的解析规则（取值风格、短选项、数组、冲突）见 [cli-args.md](cli-args.md)。
+`CliSource` parsing rules (value style, short options, arrays, conflicts) are in [cli-args.md](cli-args.md).
 
-## `core/` 里放什么
+## What goes in `core/`
 
-只放 `Source`、`Format`、`Locator`、`OriginSite` 四个 trait，`MemorySource`、`StringSource`、`BytesSource` 三个实现，以及热更新用的 `LiveConfig`。`LiveConfig` 只通过 `Locator` 读字节，不直接调平台 API；`FileSource`、`EnvSource`、`CliSource` 不额外定义标记 trait，各自在自己包里 `impl Source`；`FileSource` 另外实现 `OriginSite` 和 `Locator`。
+Only the four traits `Source`, `Format`, `Locator` and `OriginSite`, the three implementations `MemorySource`, `StringSource` and `BytesSource`, plus `LiveConfig` for hot reload. `LiveConfig` reads bytes only through `Locator` and never calls platform APIs directly; `FileSource`, `EnvSource` and `CliSource` define no extra marker traits, each implements `Source` in its own package; `FileSource` additionally implements `OriginSite` and `Locator`.
 
-`core/` 里这三个实现是纯计算，不碰 IO，所有 target 都能编；每个格式 package 又都要用 `StringSource` / `BytesSource`，放在 `core/` 才不会各写一份。
+The three implementations in `core/` are pure computation, touch no IO, and compile on every target; every format package needs `StringSource` / `BytesSource` anyway, so keeping them in `core/` avoids writing a copy each time.
 
-`FileSource` 读文件、`EnvSource` 读进程环境、`CliSource` 读 argv，都带平台约束；`EnvSource` 还多一整套前缀、分隔符、嵌套键和类型推断的规则。放进 `core/` 就破了「`core/` 无平台代码」。
+`FileSource` reads files, `EnvSource` reads the process environment and `CliSource` reads argv, all with platform constraints; `EnvSource` adds a whole set of rules for prefixes, separators, nested keys and type inference. Putting them in `core/` would break "`core/` has no platform code".
 
-## package 划分与命名
+## Package layout and naming
 
-- `core/`：core 包，四个 trait、三个内存实现，以及 `LiveConfig`。
-- `core/format/xxx_format/`：只提供一个 `Format` 类型，例如 `JsonFormat`、`TomlFormat`，不再包一层 `Source`。依赖写在自己的 `moon.pkg` 里，加一种格式只动这个 package。
-- `file_source/`、`env_source/`、`cli_source/`：`Source` 实现，和 `core/` 平级。
+- `core/`: the core package, four traits, three in-memory implementations, and `LiveConfig`.
+- `core/format/xxx_format/`: provides only a `Format` type, such as `JsonFormat` or `TomlFormat`, with no extra `Source` wrapper. Dependencies go in its own `moon.pkg`; adding a format touches only this package.
+- `file_source/`, `env_source/`, `cli_source/`: `Source` implementations, at the same level as `core/`.
 
-后缀写清包里提供什么：格式包用 `_format`，Source 包用 `_source`。这样也避开和 MoonBit 标准库的包重名（`env`、`json` 都撞过），原因见 [decisions.md](../decisions/decisions.md#1-包名不能和-moonbit-标准库的包重名)。
+The suffix says what the package provides: format packages use `_format`, Source packages use `_source`. This also avoids clashing with MoonBit standard library package names (`env` and `json` both clashed before); the reason is in [decisions.md](../decisions/decisions.md#1-package-names-cannot-collide-with-moonbit-standard-library-package-names).
 
-## 什么时候用第三方解析器
+## When to use a third-party parser
 
-没有硬性标准。解析器成熟、好用、不引入平台依赖，符合 `core/` 的设计约束，就直接用；没有合适的，或者格式简单、自己写更可控，就自己写。
+There is no hard rule. If a parser is mature, pleasant to use, brings no platform dependency and fits the `core/` constraints, use it directly; otherwise, or when the format is simple and writing it yourself gives more control, write it yourself.
 
-TOML、YAML、XML、CBOR 用第三方解析器；JSON、INI、`.env` 是自己写的。
+TOML, YAML, XML and CBOR use third-party parsers; JSON, INI and `.env` are written in-house.
 
-## 来源追踪
+## Origin tracking
 
-追踪信息挂在 `Value` 的每个节点上：节点存一个 `&OriginSite?`，不存 label 字符串，也不另建
-「路径 → 来源」的表。表被标量覆盖、数组整体替换时不会留下脏数据。
+Tracking information rides on every node of `Value`: a node stores an `&OriginSite?`, not a label string, and no separate
+"path → origin" table is built. When a table is overwritten by a scalar or an array is replaced as a whole, no stale data is left behind.
 
 ```moonbit
 pub(all) enum SourceKind { Memory; File; Env; Cli; Custom }
@@ -86,7 +90,7 @@ pub(all) enum SourceKind { Memory; File; Env; Cli; Custom }
 pub(open) trait OriginSite {
   fn kind(Self) -> SourceKind
   fn describe(Self, KeyPath) -> String
-  fn locator(Self) -> &Locator? = _   // 默认 None
+  fn locator(Self) -> &Locator? = _   // defaults to None
 }
 
 pub(open) trait Locator {
@@ -94,75 +98,75 @@ pub(open) trait Locator {
 }
 ```
 
-`describe` 拿到 `KeyPath`，所以环境变量、命令行可以按路径查回原始名字；文件来源忽略路径，
-只报文件本身。`OriginSite` 是 trait object，`Value` 只多一个引用；label 在查询时生成，不存快照。
+`describe` receives a `KeyPath`, so environment variables and the command line can look the original name back up by path; file sources ignore the path
+and report only the file itself. `OriginSite` is a trait object and `Value` carries just one more reference; labels are generated at query time, not stored as a snapshot.
 
-`Value` 加一个私有字段 `origin : &OriginSite?`，构造器给 `None`。`Source::collect` 产出
-`Layer`，把值和这层的 site 一起交给 `Config`：
+`Value` gains a private field `origin : &OriginSite?`, which constructors set to `None`. `Source::collect` produces
+`Layer`, handing the value and this layer's site to `Config` together:
 
 ```moonbit
 pub(open) trait Source {
   fn collect(Self) -> Layer raise ConfigError
-  fn kind(Self) -> SourceKind = _   // blanket impl 给 Custom
-  fn raw_locator(Self) -> &Locator? = _   // 默认 None；热更新用
+  fn kind(Self) -> SourceKind = _   // blanket impl gives Custom
+  fn raw_locator(Self) -> &Locator? = _   // defaults to None; used by hot reload
 }
 ```
 
-`Format` 不打标——同一个 `JsonFormat` 可能解析内存字符串，也可能解析文件，它不知道位置。
-它另外提供 `suffixes` / `sniff` / `decode_path` 三个默认方法，让格式自己声明后缀和内容特征；
-自动发现见 [format-detect.md](format-detect.md)。
+`Format` is not tagged — the same `JsonFormat` may parse an in-memory string or a file, and it does not know its location.
+It instead offers three default methods, `suffixes` / `sniff` / `decode_path`, letting each format declare its suffixes and content traits;
+automatic detection is in [format-detect.md](format-detect.md).
 
-`Config::merged` 在每次 `collect()` 后递归给整棵树补 site，再 merge；`build` 清掉 `sources`
-也不丢信息。合并时 site 跟着赢家走，表节点取覆盖方的 site。已经有 site 的节点不会被覆盖，
-组合来源可以先用 `Value::with_origin` 给子树标不同的 site。
+`Config::merged` fills sites into the whole tree recursively after each `collect()`, then merges; `build` clearing `sources`
+loses no information. When merging, the site follows the winner, and table nodes take the overwriting side's site. Nodes that already have a site are not overwritten,
+so composite sources can use `Value::with_origin` to tag subtrees with different sites first.
 
-### 展示与反推
+### Display and reverse lookup
 
-`label` 只给人看，不解析、不反推。查询返回 `Origin`，它是「site + 路径」：
+`label` is for humans only; it neither parses nor reverse-engineers. Queries return `Origin`, which is "site + path":
 
 - `Config::origin_of(path) -> Origin? raise ConfigError`
 - `Config::origin_at(path : KeyPath) -> Origin? raise ConfigError`
-- `Config::origins() -> Array[Origin] raise ConfigError`，路径在遍历时算出来，不存进节点
-- `Config::snapshot() -> Array[Entry] raise ConfigError`，每条带路径、值、来源
+- `Config::origins() -> Array[Origin] raise ConfigError`, with paths computed during traversal, not stored in nodes
+- `Config::snapshot() -> Array[Entry] raise ConfigError`, each entry with its path, value and origin
 
-`Origin` 的方法：`kind()`、`label()`、`path()`、`locator()`、`site()`。`path()` 给结构化的
-`KeyPath`（`segments()` / `to_string()`），需要程序化判断时直接看段，不用拆字符串。
+`Origin` methods: `kind()`, `label()`, `path()`, `locator()`, `site()`. `path()` gives a structured
+`KeyPath` (`segments()` / `to_string()`), so programmatic checks can look at segments directly instead of splitting strings.
 
-`Config::snapshot()` 把当前树导成 `Array[Entry]`，每条是「路径 + 值 + 来源」，对应
-`path()` / `value()` / `origin()`。表节点递归、数组当叶子，和 `origins()` 共用同一套遍历；
-来源未追踪时 `origin()` 给 `None`，不伪造 label。
+`Config::snapshot()` exports the current tree as `Array[Entry]`, each entry "path + value + origin", mapping to
+`path()` / `value()` / `origin()`. Table nodes recurse, arrays are leaves, sharing the same traversal with `origins()`;
+when an origin is not tracked, `origin()` gives `None` rather than faking a label.
 
-两个查询在没 `build()` 时会现场合并，所以保留 `raise`；路径不存在时 `origin_of` 给 `None`。
-`StringSource` / `BytesSource` 报 `SourceKind::Custom`，标签是 `string` / `bytes`。
+Both queries merge on the spot when `build()` has not run, hence the `raise`; `origin_of` gives `None` when the path does not exist.
+`StringSource` / `BytesSource` report `SourceKind::Custom`, with labels `string` / `bytes`.
 
-`FileSource` 自己是这层的 site，同时实现 `Locator`：`label()` 是 `file:<路径>`，
-`locator()` 调一次 `read()` 就重新读出同一份字节。它的 `raw_locator()` 也返回自己，
-所以热更新能跟踪到被覆盖的文件来源。读文件失败报 `ConfigError::IoError`，
-消息里带路径和底层原因；解析失败仍是 `ParseError`。
+`FileSource` is the site of its own layer and also implements `Locator`: `label()` is `file:<path>`,
+and `locator()` calls `read()` once to reread the same bytes. Its `raw_locator()` also returns itself,
+so hot reload can track file sources that were overwritten. A failed file read raises `ConfigError::IoError`, with the path and
+underlying reason in the message; a parse failure is still `ParseError`.
 
-环境变量、命令行的 site 里存「路径 → 原始变量名/参数名」索引：`describe(path)` 拼成
-`env:APP_DB_PORT` / `cli:--log-level`；表节点查不到时退回 `env:前缀*` / `cli:args`。
-索引来自这次真正读到的变量或 argv，不是格式化好的 label。
+The environment and command-line sites store a "path → original variable name / argument name" index: `describe(path)` builds
+`env:APP_DB_PORT` / `cli:--log-level`; table nodes fall back to `env:prefix*` / `cli:args` when lookup fails.
+The index comes from the variables or argv actually read this time, not from formatted labels.
 
-`MemorySource` 用一个独立的空 site，不返回自己：`MemorySource` 持有值树，值树再指回去就是环。
-native 默认的引用计数不回收环（`MOONBIT_TRIAL_DELETION=0`），JS / wasm-gc 的 tracing GC 才收。
+`MemorySource` uses a separate empty site and does not return itself: `MemorySource` holds the value tree, and pointing back would create a cycle.
+native's default reference counting does not collect cycles (`MOONBIT_TRIAL_DELETION=0`); only JS / wasm-gc tracing GC does.
 
-`&T` 在 MoonBit 里是 trait object，只能用于 trait，不是 Rust 的借用；没有生命周期检查。
-所以 `Origin` 可以安全地持有 site，但 `&Path` 不成立（`Path` 是 struct），core 里也不能靠
-`&` 引用具体类型。
+`&T` in MoonBit is a trait object, usable only for traits, not Rust's borrow; there are no lifetime checks.
+So `Origin` can safely hold a site, but `&Path` does not work (`Path` is a struct), and core cannot reference a concrete type with
+`&` either.
 
-`FileSource` 的路径就是 `String`，和 `moonbitlang/x/fs` 的接口一致。`@path` 技术上能进 core，
-但会带进平台分派；`Path` 也只是 `String` 包装，`@fs` 只收 `String`。需要路径运算时在
-`file_source` 包内用 `Path`，core 的 site 仍然是 `String`。
+`FileSource`'s path is just `String`, matching the `moonbitlang/x/fs` interface. `@path` could technically enter core,
+but it would drag in platform dispatch; `Path` is only a `String` wrapper and `@fs` accepts only `String`. When path arithmetic is needed, use `Path`
+inside the `file_source` package; core's site stays `String`.
 
-不用 `String?` 当来源：消费端得靠 `starts_with("file:")` 判断，前缀拼错、漏解析都不会报错；
-trait object + enum 能穷尽匹配。
+Do not use `String?` as an origin: consumers would have to test `starts_with("file:")`, and a typo in the prefix or a missing parse would never error;
+trait object + enum gives exhaustive matching.
 
-`Value` 的 `Eq` 要手写成只比 `kind`，否则内容相同、来源不同的两个值不相等。
+`Value`'s `Eq` must be written by hand to compare only `kind`, otherwise two values with the same content but different origins are not equal.
 
-一个语义限制：表节点的 site 是「最后碰它的那层」，反推只对叶子准确；要完整历史，就得把
-`origin` 从单个 site 变成列表。
+One semantic limitation: a table node's site is "the layer that touched it last", so reverse lookup is only accurate for leaves; a full history would require changing
+`origin` from a single site into a list.
 
-## 跨 package 的 API
+## Cross-package API
 
-方法不能跨 package，跨 package 的能力写成自由函数：`to_json(v)`、`extract_from(cfg, path)`。设计新 API 时能用自由函数就别用方法。记录见 [decisions.md](../decisions/decisions.md#2-方法不能跨包)。
+Methods cannot cross packages; capabilities that do become free functions: `to_json(v)`, `extract_from(cfg, path)`. When designing new APIs, prefer free functions over methods. Records are in [decisions.md](../decisions/decisions.md#2-methods-cannot-cross-packages).

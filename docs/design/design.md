@@ -1,64 +1,68 @@
-# moonfig 设计
+# moonfig design
 
-主线是「多 Source → 统一表示 → 分层合并 → 取值 / 提取到结构体 / 校验」，先做能跑通的最小闭环。
+> **Conclusion**: The main line is "many Sources → one representation → layered merge → getters / extraction into structs / validation"; build the smallest end-to-end loop that works first.
+> **Authority**: Overview — types and function signatures follow `.mbti` and the code; this document explains the data model and the trade-offs.
+> **Out of scope**: Steps are in [layer-sources.md](../guides/layer-sources.md); history is in [decisions.md](../decisions/decisions.md).
 
-## 1. 核心类型
+## 1. Core types
 
 ```moonbit
-///| 配置值在内存里的形状
+///| Shape of a config value in memory
 pub(all) enum ValueKind {
   Null
   Bool(Bool)
-  Int(Int64)              // 所有整数统一用 Int64
+  Int(Int64)              // every integer is Int64
   Float(Double)
   Str(String)
-  Bytes(Bytes)            // 二进制数据，只有 CBOR 这类二进制格式会产生
+  Bytes(Bytes)            // binary data; only binary formats such as CBOR produce it
   Array(Array[Value])
   Table(Map[String, Value])
 }
 
-///| 配置值
+///| A config value
 pub struct Value {
   kind : ValueKind
-  priv origin : &OriginSite?   // 来源对象；构造器给 None，合并前补上
+  priv origin : &OriginSite?   // origin object; constructors give None, filled in before merging
 }
 ```
 
-`origin` 只存一个指向 `OriginSite` 的引用，不存 label 字符串。`OriginSite` 是来源自己的对象，
-提供 `kind`、`describe(KeyPath)` 和可选的 `locator`；label 在 `Origin::label()` 里按需生成。
+`origin` stores only a reference to an `OriginSite`, not a label string. `OriginSite` is the source's own object,
+providing `kind`, `describe(KeyPath)` and an optional `locator`; the label is generated on demand in `Origin::label()`.
 
-`Source::collect` 返回 `Layer { value, origin }`，一层的值和它的 site 一起产出。`Config` 把 site
-递归补到整棵树；已经有 site 的节点不覆盖，组合来源可以先用 `Value::with_origin` 给子树标不同的 site。
+`Source::collect` returns `Layer { value, origin }`, so a layer's value and its site are produced together. `Config`
+fills the site into the whole tree recursively; nodes that already have a site are not overwritten, so composite
+sources can use `Value::with_origin` to tag subtrees with different sites first.
 
-`KeyPath` 是结构化的键路径（`["db", "port"]`），点号串只在 `origin_of` / `get_path` 的 API
-边界解析一次；`origin_of` / `origins()` 返回 `Origin`，用 `path()` 拿层级，用 `label()` 拿展示文本。
+`KeyPath` is a structured key path (`["db", "port"]`); the dotted string is parsed only once at the `origin_of` /
+`get_path` API boundary; `origin_of` / `origins()` return `Origin`, with `path()` for the hierarchy and `label()` for
+display text.
 
-`Value::from_literal(StringView)` 把一段字面文本猜成配置值（`Bool` / `Int64` / `Float` /
-字符串），环境变量和命令行共用这一套，规则见 [sources.md](sources.md)。
+`Value::from_literal(StringView)` guesses a config value from a piece of literal text (`Bool` / `Int64` / `Float` /
+string); environment variables and the command line share this, with rules in [sources.md](sources.md).
 
-## 2. 合并
+## 2. Merge
 
 ```moonbit
 fn merge(base : Value, over : Value) -> Value
 ```
 
-三条规则：
+Three rules:
 
-- 都是 `Table` → 递归逐 key 合并
-- 其它 → `over` 覆盖 `base`
-- 数组**整体替换**，不拼接
+- both are `Table` → merge recursively key by key
+- otherwise → `over` overwrites `base`
+- arrays are replaced **as a whole**, not concatenated
 
-## 3. 配置对象与取值
+## 3. Config object and getters
 
-`Config` 持有 `sources`、`rule`、`value` 三个字段：`add` 只 append，`build` 按 `rule` 把 Source 逐个 merge 成一棵树，之后的 `get_*` 都从这棵树按路径取值。它不认识具体格式，只认识 `Source`。
+`Config` holds three fields, `sources`, `rule` and `value`: `add` only appends, `build` merges the Sources one by one into a tree according to `rule`, and later `get_*` calls read values from that tree by path. It knows nothing about concrete formats, only `Source`.
 
-`MergeRule` 默认 `LastWins`（后加覆盖先加），另有 `FirstWins`、`ByKind(Array[SourceKind])` 和 `Custom(fn)`。规则是整份 `Config` 的，不做单层特殊；要单层特殊就给 `Source` 包一层。`ByKind` 的数组按优先级从高到低写，没列出的 kind 排在最后，同一档内后加的赢；`Custom(fn)` 收到「已经合好的部分」和「下一层」，返回新的部分。
+`MergeRule` defaults to `LastWins` (later additions overwrite earlier ones), and also offers `FirstWins`, `ByKind(Array[SourceKind])` and `Custom(fn)`. The rule belongs to the whole `Config`; there is no per-layer special case — if you need one, wrap the `Source`. For `ByKind` the array is written from highest to lowest priority; unlisted kinds come last, and within the same tier the later addition wins. `Custom(fn)` receives "the part merged so far" and "the next layer" and returns the new part.
 
 ```moonbit
 let cfg = Config::new()
   .add(MemorySource::new(table))
   .add(StringSource::new(text, JsonFormat::new()))
-  .build()                       // 依次合并，后加者优先
+  .build()                       // merge in order, later additions win
 
 cfg.get_string("db.host")        // String
 cfg.get_int("db.port")           // Int64
@@ -67,38 +71,27 @@ cfg.get_bool("debug")            // Bool
 cfg.get_bytes("cert")            // Bytes
 ```
 
-- 路径用点号展开：`"db.host"` → `Table{"db": Table{"host": ...}}`
-- key 不存在 → **报错，不返回默认值**（默认值应该由 `MemorySource` 提供，那才是它的职责）
-- `get_float` 默认把 `Int` 加宽成 `Double`，超出 2^53 时按浮点精度近似；`get_float_strict` 只接受 `Float`。反方向（`Float` → 整数）始终报错，不截断
-- `Config::snapshot()` 导出 `Array[Entry]`，每条是路径、值、来源；`origins()` 从同一套遍历里取来源。表节点递归，数组当叶子
+- Paths expand with dots: `"db.host"` → `Table{"db": Table{"host": ...}}`
+- missing key → **error, no default value** (defaults should come from `MemorySource`; that is its job)
+- `get_float` widens `Int` to `Double` by default, approximating by floating-point precision beyond 2^53; `get_float_strict` accepts only `Float`. The reverse (`Float` → integer) always errors, never truncates
+- `Config::snapshot()` exports `Array[Entry]`, each entry a path, value and origin; `origins()` takes origins from the same traversal. Table nodes recurse, arrays are leaves
 
-需要配置文件变化后自动重读时，用 `build_live()` 保留来源清单，见 [hot-reload.md](hot-reload.md)。
+To reread automatically when the config file changes, use `build_live()` to keep the source list; see [hot-reload.md](hot-reload.md).
 
-## 4. 错误
+## 4. Errors
 
-```moonbit
-pub(all) suberror ConfigError {
-  MissingKey(String)                      // 路径没被任何 Source 提供
-  TypeMismatch(String, String, String)    // 路径、想要、实际
-  ParseError(String)                      // 解析失败：格式、类型推断、整数溢出……
-  IoError(String)                         // 读取外部数据失败（文件、环境变量……）
-  MergeConflict(String, String, String)   // 类型冲突：路径、两侧类型；当前没有代码路径会抛
-  InvalidValue(String, String, String)    // 校验失败：路径、期望约束、实际
-  UnknownKey(String)                      // 校验时发现不在允许列表里的键
-  UnknownFormat(String, Array[String])    // 无法判断格式：名称、支持的后缀
-}
-```
+`ConfigError` is the only error type crossing the library boundary. Variant fields, trigger conditions and the exact `Show` text live in [errors.md](../reference/errors.md); the enum and its `Show` implementation are in `core/error.mbt`.
 
-唯一体验标准：用户看到错误，能立刻知道**哪个键、期望什么、实际什么**。
+The single UX standard: when users see an error, they immediately know **which key, what was expected, what was actual**.
 
-`IoError` 和 `ParseError` 分开：读不到和读到了但解析不了是两回事，混在一起会让用户去查格式。
-`MergeConflict` 是预留变体——现在的合并规则都是覆盖，不做类型冲突判定。
+`IoError` and `ParseError` are separate: unreadable and read-but-unparsable are two different things, and mixing them sends users looking at the format.
+`MergeConflict` is a reserved variant — current merge rules are all overwrite, with no type-conflict detection.
 
-## 设计文档
+## Design documents
 
-- [sources.md](sources.md) —— Source / Format 模型、package 划分与来源追踪
-- [extract.md](extract.md) —— 提取到结构体、整数映射、错误消息
-- [validate.md](validate.md) —— 校验：按键规则表、结构体 `Validate`、未知键
-- [format-detect.md](format-detect.md) —— 自动发现格式：后缀优先、内容判断、候选顺序
-- [hot-reload.md](hot-reload.md) —— 热更新：快照替换、文件轮询、失败保留旧配置
-- [../decisions/decisions.md](../decisions/decisions.md) —— 决策记录
+- [sources.md](sources.md) —— Source / Format model, package layout and origin tracking
+- [extract.md](extract.md) —— extraction into structs, integer mapping, standard-library error mapping
+- [validate.md](validate.md) —— validation: per-key rule table, struct `Validate`, unknown keys
+- [format-detect.md](format-detect.md) —— automatic format detection: suffix first, content sniffing, candidate order
+- [hot-reload.md](hot-reload.md) —— hot reload: snapshot replacement, file polling, keep the old config on failure
+- [../decisions/decisions.md](../decisions/decisions.md) —— decision records

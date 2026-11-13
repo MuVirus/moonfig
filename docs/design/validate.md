@@ -1,15 +1,19 @@
-# 校验
+# Validation
 
-配置读进来先验一遍，问题在启动时暴露，而不是业务代码跑到一半才发现。
+> **Conclusion**: validation is an explicit step: by key use the `Rule` rule table, by struct use `Validate`, and both share `ConfigError`.
+> **Authority**: Normative — rules, unknown keys and error shapes follow this document; signatures follow `.mbti`.
+> **Out of scope**: Full code is in [examples/validate](../../examples/validate/README.md); history is in [decisions.md](../decisions/decisions.md).
 
-两条路共用同一套规则和错误：
+Read the config in and verify it once, so problems surface at startup instead of halfway through business code.
 
-- **按键**：`Config` 上没有字段声明，规则表显式列出路径和约束。
-- **结构体**：字段已经在结构体里，约束写在 `Validate` 实现里，提取后立刻跑。
+Two paths share the same rules and errors:
 
-两条路不互相替代：只有零星几个键要验，用按键；约束和字段一一对应，用 `Validate`。
+- **By key**: `Config` has no field declarations, so a rule table lists paths and constraints explicitly.
+- **By struct**: the fields are already in the struct, constraints go in the `Validate` impl, and run right after extraction.
 
-## 按键
+The two paths do not replace each other: a handful of keys to check → by key; constraints mapping one-to-one to fields → `Validate`.
+
+## By key
 
 ```moonbit
 cfg.validate([
@@ -20,17 +24,16 @@ cfg.validate([
 ])
 ```
 
-`validate` 遇到第一个错误就停，和 `get_*` 一个口径；要一次列全用 `validate_all`，它返回
-`Array[ConfigError]`，顺序和规则表一致。两个都带 `raise`：没 `build()` 时会现场合并，
-读取或解析失败要报出来。
+`validate` stops at the first error, the same as `get_*`; use `validate_all` to list them all, returning
+`Array[ConfigError]` in rule-table order. Both carry `raise`: without `build()` they merge on the spot, and read or parse failures must be reported.
 
-必填项不用单独写规则：任何规则取不到路径都会报 `MissingKey`。`get_*` 和 `extract_from`
-本身也会报。
+Required fields need no separate rule: any rule that cannot find its path raises `MissingKey`. `get_*` and `extract_from`
+report it too.
 
-内置规则之外用 `Rule::custom`：返回 `None` 通过，`Some(实际值)` 失败。`实际值` 会进错误消息，
-密码这类字段只写长度或类型，不原样返回。
+Beyond built-in rules, use `Rule::custom`: returning `None` passes, `Some(actual value)` fails. The `actual value` goes into the error message;
+for fields such as passwords write only the length or type, never return the value verbatim.
 
-## 结构体
+## Structs
 
 ```moonbit
 impl @config.Validate for DbCfg with fn validate(self, prefix) {
@@ -41,42 +44,33 @@ impl @config.Validate for DbCfg with fn validate(self, prefix) {
 let db : DbCfg = extract_validated_from(cfg, "db")
 ```
 
-`extract_validated_from` 先走 `extract_from`，再调结构体自己的 `Validate`。`prefix` 是提取时的
-起始路径，拼上字段名就是完整路径，错误消息和按键校验一致。
+`extract_validated_from` first goes through `extract_from`, then calls the struct's own `Validate`. `prefix` is the
+starting path at extraction time; appending the field name gives the full path, so error messages match key-based validation.
 
-## 未知键
+## Unknown keys
 
-`derive(FromJson)` 会忽略结构体里没有的字段，也不提供未知字段钩子，所以结构体不知道自己外面
-多了什么。未知键只能按键查：
+`derive(FromJson)` ignores fields the struct does not have and offers no unknown-field hook, so a struct cannot know what extra
+keys exist around it. Unknown keys can only be checked by key:
 
 ```moonbit
 Rule::allowed_keys("db", ["host", "port", "user"])
 ```
 
-不写就不查，相当于开关默认关。嵌套结构要逐层给 `allowed_keys`；递归 strict schema 暂不做。
+If omitted, no check happens: the switch defaults to off. Nested structures need `allowed_keys` layer by layer; recursive strict schema is not done yet.
 
-## 错误
+## Errors
 
-| 情况 | 错误 |
-|---|---|
-| 值不符合约束 | `InvalidValue(path, 期望约束, 实际)` |
-| 出现没列出的键 | `UnknownKey(path)` |
+Validation raises two variants: `InvalidValue(path, expected, actual)` when a value violates a constraint, and `UnknownKey(path)` when a key outside the allowed list appears. Fields, trigger conditions and exact messages are in [errors.md](../reference/errors.md#invalidvalue) and [errors.md](../reference/errors.md#unknownkey).
 
-```text
-invalid value for key 'db.port': expected 1..65535, got 70000
-invalid value for key 'db.user': expected 1..64 characters, got 0 characters
-key 'db.extra' is not allowed
-```
+`actual` is supplied by the rule: the shape name (`Str`) on type mismatch, the length on length mismatch, and custom rules decide for themselves.
+Error messages never print the original value of password-like fields.
 
-`actual` 由规则给：类型不符时是形状名（`Str`），长度不符时是长度，自定义规则自己决定。
-错误消息不打印密码类字段的原值。
+## Boundaries
 
-## 边界
+- Validation reads only the merged result and does not change values; fixing values belongs at the Source layer.
+- A validation failure does not automatically fall back to the old config; on hot reload whether to keep the old config is up to the caller.
+- No `get_int_range`-style variants on each `get_*`: the API would bloat, and the same config would be checked over and over.
+- No automatic validation through `derive(FromJson)`: it derives a standard-library trait with no access to field names, constraints or unknown keys.
+- No reflection / schema auto-mapping: MoonBit has no macros, so a field list must still be written by hand; writing `Validate` directly is better.
 
-- 校验只读合并后的结果，不改值；要修值应该在 Source 层做。
-- 校验失败不自动回退到旧配置；热更新时是否保留旧配置由调用方决定。
-- 不给每个 `get_*` 加 `get_int_range` 之类的变体：API 会膨胀，同一份配置还会被反复检查。
-- 不靠 `derive(FromJson)` 自动校验：派生的是标准库 trait，拿不到字段名、约束和未知键。
-- 不做反射 / schema 自动映射：MoonBit 没有宏，最后仍要手写字段清单，不如直接写 `Validate`。
-
-完整可运行的例子见 [`examples/validate`](../../examples/validate/README.md)。
+A complete runnable example is in [`examples/validate`](../../examples/validate/README.md).

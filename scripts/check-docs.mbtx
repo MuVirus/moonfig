@@ -1,0 +1,1211 @@
+---
+import {
+  "moonbitlang/core/env" @env,
+  "moonbitlang/x@0.5.5/fs" @fs,
+  "moonbitlang/x@0.5.5/sys" @sys,
+}
+---
+
+///|
+/// Documentation checks for the repository. Run from the repository root:
+///
+///     moonx scripts/check-docs.mbtx
+///
+/// `moonx` runs this on the Wasm backend; `moonbitlang/x/fs` provides file IO,
+/// so no native toolchain is required. Exit code 0 means every check passed;
+/// 1 lists what to fix. Each check and the scan scope:
+/// docs/conventions/docs.md
+
+///|
+struct Heading {
+  level : Int
+  text : String
+}
+
+///|
+struct Fence {
+  line : Int
+  info : String
+}
+
+///|
+struct Doc {
+  lines : Array[String]
+  headings : Array[Heading]
+  fences : Array[Fence]
+  code : Array[Bool]
+  unclosed : Int
+}
+
+///|
+let failures : Array[String] = []
+
+///|
+fn fail(file : String, message : String) -> Unit {
+  failures.push("\{file}: \{message}")
+}
+
+///|
+fn read_text(path : String) -> String {
+  @fs.read_file_to_string(path) catch { _ => "" }
+}
+
+///|
+fn is_dir(path : String) -> Bool {
+  @fs.is_dir(path) catch { _ => false }
+}
+
+///|
+/// Directories that are ignored by Git are not part of the documentation.
+/// Read the simple `name/` rules from `.gitignore` instead of keeping a second
+/// hand-maintained list in this script.
+fn ignored_dir_names() -> Array[String] {
+  let names : Array[String] = [".git", "node_modules"]
+  for line in read_text(".gitignore").split("\n") {
+    let text = line.trim().to_owned()
+    if text.is_empty() || text.has_prefix("#") || text.has_prefix("!") {
+      continue
+    }
+    if text.has_suffix("/") {
+      let name = text[0:text.length() - 1].to_owned()
+      if !name.is_empty() &&
+        !name.contains("/") &&
+        !name.contains("*") &&
+        !name.contains("?") {
+        names.push(name)
+      }
+    }
+  }
+  names
+}
+
+///|
+fn skip_dir(name : String, ignored : Array[String]) -> Bool {
+  ignored.contains(name)
+}
+
+///|
+fn join_path(left : String, right : String) -> String {
+  if left.is_empty() || left == "." {
+    right
+  } else if left.has_suffix("/") {
+    left + right
+  } else {
+    left + "/" + right
+  }
+}
+
+///|
+fn normalize(path : String) -> String {
+  let parts : Array[String] = []
+  for part in path.replace_all(old="\\", new="/").split("/") {
+    let segment = part.to_owned()
+    if segment.is_empty() || segment == "." {
+      continue
+    } else if segment == ".." {
+      if !parts.is_empty() && parts[parts.length() - 1] != ".." {
+        parts.pop() |> ignore
+      } else {
+        parts.push(segment)
+      }
+    } else {
+      parts.push(segment)
+    }
+  }
+  parts.join("/")
+}
+
+///|
+fn dirname(path : String) -> String {
+  let text = path.replace_all(old="\\", new="/")
+  match text.rev_find("/") {
+    Some(index) => {
+      if index == 0 {
+        "/"
+      } else {
+        text[0:index].to_owned()
+      }
+    }
+    None => "."
+  }
+}
+
+///|
+fn fence_open(line : String) -> (Char, Int, String)? {
+  let text = line.trim_start().to_owned()
+  if text.has_prefix("```") || text.has_prefix("~~~") {
+    let ch = text.get_char(0).unwrap()
+    let mut count = 0
+    while count < text.length() && text.get_char(count) == Some(ch) {
+      count += 1
+    }
+    let info = text[count:].trim().to_owned()
+    Some((ch, count, info))
+  } else {
+    None
+  }
+}
+
+///|
+fn parse_markdown(text : String) -> Doc {
+  let lines : Array[String] = text
+    .split("\n")
+    .map(fn(line) { line.to_owned() })
+    .to_array()
+  let headings : Array[Heading] = []
+  let fences : Array[Fence] = []
+  let code : Array[Bool] = Array::make(lines.length(), false)
+  let mut open : (Char, Int, Int)? = None
+  let mut unclosed = -1
+  let mut i = 0
+  while i < lines.length() {
+    let line = lines[i]
+    match open {
+      Some((ch, count, _start)) => {
+        code[i] = true
+        match fence_open(line) {
+          Some((close_ch, close_count, info)) => {
+            if close_ch == ch && close_count >= count && info.is_empty() {
+              open = None
+            }
+          }
+          None => ()
+        }
+      }
+      None => {
+        match fence_open(line) {
+          Some((ch, count, info)) => {
+            fences.push({ line: i, info })
+            code[i] = true
+            open = Some((ch, count, i))
+          }
+          None => {
+            let trimmed = line.trim_start().to_owned()
+            if trimmed.has_prefix("#") {
+              let mut level = 0
+              while level < 6 && trimmed.get_char(level) == Some('#') {
+                level += 1
+              }
+              if trimmed.get_char(level) == Some(' ') {
+                let rest = trimmed[level + 1:].trim().to_owned()
+                let heading = rest.trim_end(chars="# ").to_owned()
+                headings.push({ level, text: heading })
+              }
+            }
+          }
+        }
+      }
+    }
+    i += 1
+  }
+  match open {
+    Some((_, _, start)) => unclosed = start
+    None => ()
+  }
+  { lines, headings, fences, code, unclosed }
+}
+
+///|
+fn slug_char(ch : Char) -> Bool {
+  let code = ch.to_int()
+  ch.is_ascii_alphabetic() ||
+  ch.is_ascii_digit() ||
+  ch == '_' ||
+  ch == '-' ||
+  (code >= 0x4E00 && code <= 0x9FFF) ||
+  (code >= 0x3400 && code <= 0x4DBF) ||
+  (code >= 0x3040 && code <= 0x30FF) ||
+  (code >= 0xAC00 && code <= 0xD7AF) ||
+  (code >= 0x0400 && code <= 0x04FF) ||
+  (code >= 0x00C0 && code <= 0x024F) ||
+  (code >= 0xFF10 && code <= 0xFF19) ||
+  (code >= 0xFF21 && code <= 0xFF3A) ||
+  (code >= 0xFF41 && code <= 0xFF5A)
+}
+
+///|
+fn slugify(text : String) -> String {
+  let out : Array[Char] = []
+  for ch in text.to_lower().iter() {
+    if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+      out.push('-')
+    } else if slug_char(ch) {
+      out.push(ch)
+    }
+  }
+  let mut start = 0
+  let mut end = out.length()
+  while start < end && out[start] == '-' {
+    start += 1
+  }
+  while end > start && out[end - 1] == '-' {
+    end -= 1
+  }
+  let trimmed : Array[Char] = []
+  let mut i = start
+  while i < end {
+    trimmed.push(out[i])
+    i += 1
+  }
+  String::from_array(trimmed)
+}
+
+///|
+fn anchors_of(doc : Doc) -> Map[String, Bool] {
+  let counts : Map[String, Int] = Map([])
+  let result : Map[String, Bool] = Map([])
+  for heading in doc.headings {
+    let base = slugify(heading.text)
+    let count = counts.get_or_default(base, 0)
+    counts.set(base, count + 1)
+    let anchor = if count == 0 {
+      base
+    } else {
+      base + "-" + count.to_string()
+    }
+    result.set(anchor, true)
+  }
+  result
+}
+
+///|
+fn links_of(doc : Doc) -> Array[(Int, String)] {
+  let result : Array[(Int, String)] = []
+  let mut i = 0
+  while i < doc.lines.length() {
+    if !doc.code[i] {
+      let line = doc.lines[i]
+      let mut pos = 0
+      let mut keep_going = true
+      while keep_going {
+        let rest = line[pos:]
+        match rest.find("](") {
+          None => keep_going = false
+          Some(relative) => {
+            let after_open = pos + relative + 2
+            let tail = line[after_open:]
+            match tail.find(")") {
+              None => keep_going = false
+              Some(relative_end) => {
+                let mut target = line[after_open:after_open + relative_end]
+                  .trim()
+                  .to_owned()
+                if target.has_prefix("<") && target.has_suffix(">") {
+                  target = target[1:target.length() - 1].to_owned()
+                } else {
+                  match target.find(" ") {
+                    Some(space) => target = target[0:space].to_owned()
+                    None => ()
+                  }
+                }
+                result.push((i, target))
+                pos = after_open + relative_end + 1
+              }
+            }
+          }
+        }
+      }
+    }
+    i += 1
+  }
+  result
+}
+
+///|
+fn has_scheme(target : String) -> Bool {
+  let lower = target.to_lower()
+  lower.has_prefix("http://") ||
+  lower.has_prefix("https://") ||
+  lower.has_prefix("mailto:") ||
+  lower.has_prefix("tel:") ||
+  lower.has_prefix("ftp:") ||
+  lower.has_prefix("data:")
+}
+
+///|
+fn check_links(files : Array[String], docs : Map[String, Doc]) -> Unit {
+  for file in files {
+    let key = normalize(file)
+    let doc = docs.get(key).unwrap()
+    for entry in links_of(doc) {
+      let line = entry.0
+      let target = entry.1
+      if target.is_empty() || has_scheme(target) {
+        continue
+      }
+      let hash = target.find("#")
+      let raw_path = match hash {
+        Some(index) => target[0:index].to_owned()
+        None => target
+      }
+      let raw_anchor = match hash {
+        Some(index) => target[index + 1:].to_owned()
+        None => ""
+      }
+      let target_file = if raw_path.is_empty() {
+        file
+      } else if raw_path.has_prefix("/") {
+        normalize(raw_path)
+      } else {
+        normalize(join_path(dirname(file), raw_path))
+      }
+      if !@fs.path_exists(target_file) {
+        fail(file, "line \{line + 1}: link target not found: \{target}")
+        continue
+      }
+      if raw_anchor.is_empty() {
+        continue
+      }
+      if !target_file.to_lower().has_suffix(".md") {
+        fail(file, "line \{line + 1}: anchor on a non-markdown file: \{target}")
+        continue
+      }
+      let target_doc = match docs.get(normalize(target_file)) {
+        Some(found) => found
+        None => parse_markdown(read_text(target_file))
+      }
+      if !anchors_of(target_doc).contains(raw_anchor.to_lower()) {
+        fail(file, "line \{line + 1}: anchor not found: \{target}")
+      }
+    }
+  }
+}
+
+///|
+fn check_agents_index(docs_dir : String) -> Unit {
+  let index = join_path(docs_dir, "AGENTS.md")
+  if !@fs.path_exists(index) {
+    fail(index, "missing docs index")
+    return
+  }
+  let index_text = read_text(index)
+  let entries : ArrayView[String] = @fs.read_dir(docs_dir) catch { _ => [] }
+  for entry in entries {
+    let dir = join_path(docs_dir, entry)
+    if is_dir(dir) {
+      if !index_text.contains(entry + "/") {
+        fail(index, "missing subdirectory '\{entry}/'")
+      }
+      check_agents_directory(dir)
+    }
+  }
+}
+
+///|
+fn check_agents_directory(dir : String) -> Unit {
+  let agents = join_path(dir, "AGENTS.md")
+  if !@fs.path_exists(agents) {
+    fail(agents, "missing AGENTS.md")
+    return
+  }
+  let text = read_text(agents)
+  let entries : ArrayView[String] = @fs.read_dir(dir) catch { _ => [] }
+  for entry in entries {
+    let path = join_path(dir, entry)
+    if is_dir(path) {
+      check_agents_directory(path)
+    } else if entry.has_suffix(".md") &&
+      !entry.has_suffix(".zh.md") &&
+      entry != "AGENTS.md" {
+      if !text.contains(entry) {
+        fail(agents, "missing file '\{entry}'")
+      }
+    }
+  }
+}
+
+///|
+fn leading_number(text : String) -> Int? {
+  let mut i = 0
+  let mut number = 0
+  let mut any = false
+  while i < text.length() {
+    let ch = text.get_char(i).unwrap()
+    if ch.is_ascii_digit() {
+      number = number * 10 + (ch.to_int() - 48)
+      any = true
+      i += 1
+    } else {
+      break
+    }
+  }
+  if any {
+    Some(number)
+  } else {
+    None
+  }
+}
+
+///|
+fn decision_number(text : String) -> Int? {
+  match leading_number(text) {
+    Some(number) => {
+      if text.get_char(number.to_string().length()) == Some('.') {
+        Some(number)
+      } else {
+        None
+      }
+    }
+    None => None
+  }
+}
+
+///|
+struct Decision {
+  number : Int
+  title : String
+  status : String
+  impact : String
+}
+
+///|
+struct DecisionIndex {
+  number : Int
+  conclusion : String
+  status : String
+  impact : String
+}
+
+///|
+fn split_cells(line : String) -> Array[String] {
+  line.split("|").map(fn(cell) { cell.trim().to_owned() }).to_array()
+}
+
+///|
+fn decision_title(text : String) -> String? {
+  match decision_number(text) {
+    Some(number) => {
+      let marker = number.to_string() + "."
+      if text.has_prefix(marker) {
+        Some(text[marker.length():].trim().to_owned())
+      } else {
+        None
+      }
+    }
+    None => None
+  }
+}
+
+///|
+fn parse_status_line(line : String) -> (String, String)? {
+  let text = line.trim().to_owned()
+  match text.find("|") {
+    None => None
+    Some(bar) => {
+      let left = text[0:bar].trim().to_owned()
+      let right = text[bar + 1:].trim().to_owned()
+      let status = match left.find(":") {
+        Some(colon) => left[colon + 1:].trim().to_owned()
+        None => ""
+      }
+      let impact = if right.to_lower().has_prefix("affects:") {
+        match right.find(":") {
+          Some(colon) => right[colon + 1:].trim().to_owned()
+          None => ""
+        }
+      } else {
+        ""
+      }
+      if status.is_empty() || impact.is_empty() {
+        None
+      } else {
+        Some((status, impact))
+      }
+    }
+  }
+}
+
+///|
+fn status_base(status : String) -> String {
+  let cut = max_index(status.find(" ("), status.find("("))
+  if cut < 0 {
+    status.trim().to_owned()
+  } else {
+    status[0:cut].trim().to_owned()
+  }
+}
+
+///|
+fn status_refs(status : String) -> Array[Int] {
+  let refs : Array[Int] = []
+  let mut i = 0
+  while i < status.length() {
+    if status.get_char(i) == Some('#') {
+      match leading_number(status[i + 1:].to_owned()) {
+        Some(number) => {
+          refs.push(number)
+          i += 1 + number.to_string().length()
+        }
+        None => i += 1
+      }
+    } else {
+      i += 1
+    }
+  }
+  refs
+}
+
+///|
+fn decisions_of(decisions_file : String) -> Array[Decision] {
+  let doc = parse_markdown(read_text(decisions_file))
+  let decisions : Array[Decision] = []
+  let mut current : Int? = None
+  let mut current_title = ""
+  let seen : Map[Int, Bool] = Map([])
+  let mut i = 0
+  while i < doc.lines.length() {
+    if doc.code[i] {
+      i += 1
+      continue
+    }
+    let line = doc.lines[i]
+    let text = line.trim_start().to_owned()
+    if text.has_prefix("## ") {
+      let title_text = text[3:].trim().to_owned()
+      match decision_title(title_text) {
+        Some(title) => {
+          match leading_number(title_text) {
+            Some(number) => {
+              current = Some(number)
+              current_title = title
+            }
+            None => current = None
+          }
+        }
+        None => current = None
+      }
+    } else {
+      let trimmed = line.trim().to_owned()
+      if trimmed.has_prefix("Status:") {
+        match current {
+          Some(number) => {
+            if seen.contains(number) {
+              fail(decisions_file, "decision #\{number} has more than one status line")
+            } else {
+              seen.set(number, true)
+              match parse_status_line(trimmed) {
+                Some((status, impact)) => {
+                  decisions.push({ number, title: current_title, status, impact })
+                }
+                None =>
+                  fail(
+                    decisions_file,
+                    "decision #\{number}: status line must be 'Status: <status> | Affects: <paths>'",
+                  )
+              }
+            }
+          }
+          None => fail(decisions_file, "line \{i + 1}: status line outside a decision")
+        }
+      }
+    }
+    i += 1
+  }
+  decisions
+}
+
+///|
+fn decision_index(decisions_file : String) -> Array[DecisionIndex] {
+  let doc = parse_markdown(read_text(decisions_file))
+  let entries : Array[DecisionIndex] = []
+  let mut in_index = false
+  let mut i = 0
+  while i < doc.lines.length() {
+    if doc.code[i] {
+      i += 1
+      continue
+    }
+    let text = doc.lines[i].trim().to_owned()
+    if text.has_prefix("## ") {
+      in_index = text.to_lower().contains("index")
+      i += 1
+      continue
+    }
+    if !in_index || !text.has_prefix("| #") {
+      i += 1
+      continue
+    }
+    let cells = split_cells(text)
+    if cells.length() < 5 {
+      fail(decisions_file, "index row needs ID / 结论 / 状态 / 影响文档: \{text}")
+      i += 1
+      continue
+    }
+    let id = if cells[1].has_prefix("#") {
+      cells[1][1:].to_owned()
+    } else {
+      cells[1]
+    }
+    let number = match leading_number(id) {
+      Some(found) => found
+      None => {
+        fail(decisions_file, "index row has no decision number: \{text}")
+        i += 1
+        continue
+      }
+    }
+    entries.push({
+      number,
+      conclusion: cells[2],
+      status: cells[3],
+      impact: cells[4],
+    })
+    i += 1
+  }
+  entries
+}
+
+///|
+fn check_impact(decisions_file : String, impact : String) -> Unit {
+  let lower = impact.to_lower()
+  if lower.contains("none") || lower.contains("n/a") {
+    return
+  }
+  let normalized = impact.replace_all(old="、", new=",")
+  for part in normalized.split(",") {
+    let path = part.trim().to_owned()
+    if path.is_empty() {
+      fail(decisions_file, "empty path in an impact list")
+    } else if !@fs.path_exists(join_path("docs", path)) {
+      fail(decisions_file, "impact path not found: docs/\{path}")
+    }
+  }
+}
+
+///|
+fn check_decisions(decisions_file : String) -> Unit {
+  if !@fs.path_exists(decisions_file) {
+    fail(decisions_file, "missing decisions file")
+    return
+  }
+  let doc = parse_markdown(read_text(decisions_file))
+  let numbers : Array[Int] = []
+  for heading in doc.headings {
+    if heading.level == 2 {
+      match decision_number(heading.text) {
+        Some(number) => numbers.push(number)
+        None => ()
+      }
+    }
+  }
+  let mut i = 0
+  while i < numbers.length() {
+    if numbers[i] != i + 1 {
+      fail(decisions_file, "decision numbering: expected #\{i + 1}, found #\{numbers[i]}")
+    }
+    i += 1
+  }
+  let decisions = decisions_of(decisions_file)
+  let allowed = ["active", "partially superseded", "superseded", "withdrawn"]
+  let by_number : Map[Int, Decision] = Map([])
+  for decision in decisions {
+    by_number.set(decision.number, decision)
+    let base = status_base(decision.status)
+    if !allowed.contains(base) {
+      fail(decisions_file, "decision #\{decision.number}: unknown status '\{base}'")
+    }
+    check_impact(decisions_file, decision.impact)
+  }
+  for number in numbers {
+    if !by_number.contains(number) {
+      fail(decisions_file, "decision #\{number} is missing its status line")
+    }
+  }
+  for decision in decisions {
+    let base = status_base(decision.status)
+    let refs = status_refs(decision.status)
+    if (base == "superseded" || base == "partially superseded") && refs.is_empty() {
+      fail(
+        decisions_file,
+        "decision #\{decision.number}: a replaced decision must name the replacing one, e.g. '#13'",
+      )
+    }
+    for reference in refs {
+      match by_number.get(reference) {
+        None =>
+          fail(
+            decisions_file,
+            "decision #\{decision.number}: references missing decision #\{reference}",
+          )
+        Some(other) => {
+          let other_base = status_base(other.status)
+          let linked = status_refs(other.status).contains(decision.number)
+          if base == "active" {
+            if other_base != "superseded" && other_base != "partially superseded" {
+              fail(
+                decisions_file,
+                "decision #\{decision.number}: replaces #\{reference}, but #\{reference} is '\{other_base}'",
+              )
+            }
+            if !linked {
+              fail(
+                decisions_file,
+                "decision #\{reference}: must name #\{decision.number} in its status line",
+              )
+            }
+          } else if base == "superseded" || base == "partially superseded" {
+            if other_base != "active" && other_base != "partially superseded" {
+              fail(
+                decisions_file,
+                "decision #\{decision.number}: replaced by #\{reference}, but #\{reference} is '\{other_base}'",
+              )
+            }
+            if !linked {
+              fail(
+                decisions_file,
+                "decision #\{reference}: must name #\{decision.number} in its status line",
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+  let index_entries = decision_index(decisions_file)
+  let indexed : Map[Int, DecisionIndex] = Map([])
+  for entry in index_entries {
+    if indexed.contains(entry.number) {
+      fail(decisions_file, "duplicate index row for #\{entry.number}")
+    }
+    indexed.set(entry.number, entry)
+  }
+  for decision in decisions {
+    match indexed.get(decision.number) {
+      None => fail(decisions_file, "index is missing decision #\{decision.number}")
+      Some(entry) => {
+        if entry.conclusion != decision.title {
+          fail(decisions_file, "index #\{decision.number} conclusion differs from the heading")
+        }
+        if entry.status != decision.status {
+          fail(
+            decisions_file,
+            "index #\{decision.number} status '\{entry.status}' differs from '\{decision.status}'",
+          )
+        }
+        if entry.impact != decision.impact {
+          fail(decisions_file, "index #\{decision.number} impact differs from the status line")
+        }
+      }
+    }
+  }
+  for entry in index_entries {
+    if !by_number.contains(entry.number) {
+      fail(decisions_file, "indexed decision #\{entry.number} does not exist")
+    }
+  }
+}
+
+///|
+fn check_design_headers(dir : String) -> Unit {
+  let entries : ArrayView[String] = @fs.read_dir(dir) catch { _ => [] }
+  for entry in entries {
+    if !entry.has_suffix(".md") ||
+      entry.has_suffix(".zh.md") ||
+      entry == "AGENTS.md" {
+      continue
+    }
+    let path = join_path(dir, entry)
+    let doc = parse_markdown(read_text(path))
+    let head : Array[String] = []
+    let mut i = 0
+    while i < doc.lines.length() && i < 12 {
+      head.push(doc.lines[i])
+      i += 1
+    }
+    let text = head.join("\n")
+    for label in ["Conclusion", "Authority", "Out of scope"] {
+      let marker = "> **" + label + "**:"
+      if !text.contains(marker) {
+        fail(path, "missing opening line '\{label}' (expected '\{marker}...')")
+      }
+    }
+  }
+}
+
+///|
+fn shape(doc : Doc) -> String {
+  let levels : Array[String] = []
+  for heading in doc.headings {
+    levels.push(heading.level.to_string())
+  }
+  levels.join(",") + "|fences=" + doc.fences.length().to_string()
+}
+
+///|
+fn check_pair(left_file : String, right_file : String, label : String) -> Unit {
+  if !@fs.path_exists(left_file) || !@fs.path_exists(right_file) {
+    fail(left_file, "missing \{label} pair")
+    return
+  }
+  let left = parse_markdown(read_text(left_file))
+  let right = parse_markdown(read_text(right_file))
+  if shape(left) != shape(right) {
+    fail(left_file, "\{label} structure differs from \{right_file}")
+  }
+}
+
+///|
+fn translation_path(primary : String) -> String {
+  if primary == "README.mbt.md" {
+    "README_ZH.md"
+  } else if primary == "AGENTS.md" {
+    "AGENTS_ZH.md"
+  } else {
+    primary[0:primary.length() - 3].to_owned() + ".zh.md"
+  }
+}
+
+///|
+fn is_doc_primary(path : String) -> Bool {
+  let key = normalize(path)
+  (key.has_prefix("docs/") && key.has_suffix(".md") && !key.has_suffix(".zh.md")) ||
+  key == "README.mbt.md" ||
+  key == "AGENTS.md"
+}
+
+///|
+fn check_translations(files : Array[String]) -> Unit {
+  let present : Map[String, Bool] = Map([])
+  for file in files {
+    present.set(normalize(file), true)
+  }
+  for file in files {
+    let key = normalize(file)
+    if is_doc_primary(key) {
+      let translation = translation_path(key)
+      if !present.contains(translation) {
+        fail(key, "missing Chinese translation '\{translation}'")
+      } else {
+        check_pair(key, translation, "translation")
+      }
+    } else if key.has_prefix("docs/") && key.has_suffix(".zh.md") {
+      let primary = key[0:key.length() - 6].to_owned() + ".md"
+      if !present.contains(primary) {
+        fail(key, "Chinese translation has no English source '\{primary}'")
+      }
+    }
+  }
+}
+
+///|
+fn check_fence_languages(files : Array[String], docs : Map[String, Doc]) -> Unit {
+  for file in files {
+    let doc = docs.get(normalize(file)).unwrap()
+    if doc.unclosed >= 0 {
+      fail(file, "line \{doc.unclosed + 1}: unclosed code block")
+    }
+    for fence in doc.fences {
+      if fence.info.is_empty() {
+        fail(file, "line \{fence.line + 1}: code block has no language tag")
+      }
+    }
+  }
+}
+
+///|
+fn example_names_in_dir() -> Map[String, Bool] {
+  let result : Map[String, Bool] = Map([])
+  let entries : ArrayView[String] = @fs.read_dir("examples") catch { _ => [] }
+  for entry in entries {
+    if is_dir(join_path("examples", entry)) {
+      result.set(entry, true)
+    }
+  }
+  result
+}
+
+///|
+fn link_example_name(cell : String) -> String? {
+  match cell.find("](") {
+    Some(open) => {
+      let start = open + 2
+      match cell[start:].find(")") {
+        Some(length) => {
+          let target = cell[start:start + length].to_owned()
+          let cleaned = if target.has_prefix("./") {
+            target[2:].to_owned()
+          } else {
+            target
+          }
+          match cleaned.find("/") {
+            Some(slash) => Some(cleaned[0:slash].to_owned())
+            None => None
+          }
+        }
+        None => None
+      }
+    }
+    None => None
+  }
+}
+
+///|
+fn run_example_name(line : String) -> String? {
+  let marker = "moon run examples/"
+  match line.find(marker) {
+    Some(index) => {
+      let rest = line[index + marker.length():].to_owned()
+      match rest.find(" ") {
+        Some(space) => Some(rest[0:space].to_owned())
+        None => Some(rest.trim().to_owned())
+      }
+    }
+    None => None
+  }
+}
+
+///|
+fn check_examples(examples_dir : String, ci_file : String) -> Unit {
+  let actual = example_names_in_dir()
+  let readme = join_path(examples_dir, "README.md")
+  let listed : Map[String, Bool] = Map([])
+  if !@fs.path_exists(readme) {
+    fail(readme, "missing examples README")
+  } else {
+    for line in read_text(readme).split("\n") {
+      let text = line.trim().to_owned()
+      if !text.has_prefix("|") || text.contains("---") {
+        continue
+      }
+      let cells = text.split("|").to_array()
+      if cells.length() < 4 {
+        continue
+      }
+      let name = match link_example_name(cells[1].to_owned()) {
+        Some(found) => Some(found)
+        None => run_example_name(cells[3].to_owned())
+      }
+      match name {
+        Some(found) => listed.set(found, true)
+        None => ()
+      }
+    }
+    for entry in actual.keys() {
+      if !listed.contains(entry) {
+        fail(readme, "missing example '\{entry}'")
+      }
+    }
+    for entry in listed.keys() {
+      if !actual.contains(entry) {
+        fail(readme, "example '\{entry}' has no directory")
+      }
+    }
+  }
+  if !@fs.path_exists(ci_file) {
+    fail(ci_file, "missing CI workflow")
+    return
+  }
+  let in_ci : Map[String, Bool] = Map([])
+  for line in read_text(ci_file).split("\n") {
+    match run_example_name(line.to_owned()) {
+      Some(name) => in_ci.set(name, true)
+      None => ()
+    }
+  }
+  for entry in actual.keys() {
+    if !in_ci.contains(entry) {
+      fail(ci_file, "example '\{entry}' is not run in CI")
+    }
+  }
+  for entry in in_ci.keys() {
+    if !actual.contains(entry) {
+      fail(ci_file, "CI runs missing example '\{entry}'")
+    }
+  }
+}
+
+///|
+fn roadmap_aliases() -> Map[String, String] {
+  let aliases : Map[String, String] = Map([])
+  aliases.set("Core", "Core")
+  aliases.set("Many formats", "Many formats")
+  aliases.set("External sources", "External Source")
+  aliases.set("Source tracking", "Core")
+  aliases.set("Validation", "Validation")
+  aliases.set("Format detection", "Format detection")
+  aliases.set("Hot reload", "Hot reload (polling)")
+  aliases.set("Remote configuration", "Future directions")
+  aliases.set("Encrypted storage", "Future directions")
+  aliases.set("Preprocessing", "Future directions")
+  aliases
+}
+
+///|
+fn max_index(left : Int?, right : Int?) -> Int {
+  match (left, right) {
+    (Some(a), Some(b)) => if a > b { a } else { b }
+    (Some(a), None) => a
+    (None, Some(b)) => b
+    (None, None) => -1
+  }
+}
+
+///|
+fn split_heading_status(text : String) -> (String, String)? {
+  let value = text.trim().to_owned()
+  let index = max_index(value.rev_find("　"), value.rev_find(" "))
+  if index < 0 {
+    None
+  } else {
+    Some((
+      value[0:index].trim().to_owned(),
+      value[index + 1:].trim().to_owned(),
+    ))
+  }
+}
+
+///|
+fn check_roadmap(readme_file : String, roadmap_file : String) -> Unit {
+  if !@fs.path_exists(readme_file) || !@fs.path_exists(roadmap_file) {
+    fail(readme_file, "missing roadmap pair")
+    return
+  }
+  let roadmap : Map[String, String] = Map([])
+  for heading in parse_markdown(read_text(roadmap_file)).headings {
+    if heading.level == 2 {
+      match split_heading_status(heading.text) {
+        Some((label, status)) => {
+          if status == "✅" || status == "🚧" || status == "⬜" {
+            roadmap.set(label, status)
+          }
+        }
+        None => ()
+      }
+    }
+  }
+  let aliases = roadmap_aliases()
+  let readme : Array[String] = read_text(readme_file)
+    .split("\n")
+    .map(fn(line) { line.to_owned() })
+    .to_array()
+  let mut in_roadmap = false
+  let seen : Map[String, Bool] = Map([])
+  let mut i = 0
+  while i < readme.length() {
+    let line = readme[i]
+    if line.has_prefix("## ") {
+      if in_roadmap {
+        break
+      }
+      in_roadmap = line.contains("Roadmap")
+    } else if in_roadmap {
+      let text = line.trim().to_owned()
+      if text.has_prefix("|") && !text.contains("---") {
+        let cells = text.split("|").to_array()
+        if cells.length() >= 3 {
+          let status = cells[1].trim().to_owned()
+          let label = cells[2]
+            .to_owned()
+            .replace_all(old="**", new="")
+            .trim()
+            .to_owned()
+          if (status == "✅" || status == "🚧" || status == "⬜") && !label.is_empty() {
+            match aliases.get(label) {
+              Some(target) => {
+                seen.set(target, true)
+                match roadmap.get(target) {
+                  Some(expected) => {
+                    if expected != status {
+                      fail(
+                        readme_file,
+                        "roadmap row '\{label}' is \{status}, but roadmap.md '\{target}' is \{expected}",
+                      )
+                    }
+                  }
+                  None => fail(roadmap_file, "missing section '\{target}'")
+                }
+              }
+              None => {
+                fail(readme_file, "roadmap row '\{label}' has no roadmap.md section mapping")
+              }
+            }
+          }
+        }
+      }
+    }
+    i += 1
+  }
+  if !in_roadmap {
+    fail(readme_file, "missing '## Roadmap' section")
+  }
+  for label, _ in roadmap {
+    if label != "Dependencies" && !seen.contains(label) {
+      fail(readme_file, "roadmap.md section '\{label}' is missing from the README table")
+    }
+  }
+}
+
+///|
+fn collect_markdown(dir : String, out : Array[String], ignored : Array[String]) -> Unit {
+  let entries : ArrayView[String] = @fs.read_dir(dir) catch { _ => [] }
+  for entry in entries {
+    let path = join_path(dir, entry)
+    if is_dir(path) {
+      if !skip_dir(entry, ignored) {
+        collect_markdown(path, out, ignored)
+      }
+    } else if entry.has_suffix(".md") {
+      out.push(path)
+    }
+  }
+}
+
+///|
+fn print_help() -> Unit {
+  println(
+    "Documentation checks\n\n" +
+    "Usage:\n" +
+    "  moonx scripts/check-docs.mbtx         run from the repository root\n" +
+    "  moonx scripts/check-docs.mbtx --help  show this help\n\n" +
+    "Checks:\n" +
+    "  - docs/AGENTS.md and per-directory AGENTS.md indexes\n" +
+    "  - relative links and anchors\n" +
+    "  - decision numbering, status lines, index and supersede links\n" +
+    "  - design-doc opening lines (Conclusion / Authority / Out of scope)\n" +
+    "  - English primary and Chinese .zh.md pairing\n" +
+    "  - README and AGENTS language-pair structure\n" +
+    "  - code fence languages and unclosed fences\n" +
+    "  - examples/README.md, CI commands and directories\n" +
+    "  - README roadmap and docs/plan/roadmap.md statuses\n\n" +
+    "Details: docs/conventions/docs.md",
+  )
+}
+
+///|
+fn main {
+  let args = @env.args()
+  if args.contains("--help") || args.contains("-h") {
+    print_help()
+    return
+  }
+
+  if !@fs.path_exists("docs/AGENTS.md") {
+    println("docs check: run from the repository root")
+    @sys.exit(1)
+  }
+
+  let files : Array[String] = []
+  collect_markdown(".", files, ignored_dir_names())
+  let docs : Map[String, Doc] = Map([])
+  for file in files {
+    docs.set(normalize(file), parse_markdown(read_text(file)))
+  }
+
+  check_agents_index("docs")
+  check_links(files, docs)
+  check_decisions("docs/decisions/decisions.md")
+  check_design_headers("docs/design")
+  check_translations(files)
+  check_fence_languages(files, docs)
+  check_examples("examples", ".github/workflows/ci.yml")
+  check_roadmap("README.mbt.md", "docs/plan/roadmap.md")
+
+  if !failures.is_empty() {
+    println("docs check failed (\{failures.length()}):")
+    for failure in failures {
+      println("  - \{failure}")
+    }
+    @sys.exit(1)
+  }
+  println("docs check: ok (\{files.length()} markdown files)")
+}

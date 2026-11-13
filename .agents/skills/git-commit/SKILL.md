@@ -70,6 +70,7 @@ feat: Added new feature.   # 过去式、大写开头、多余句号
 - 代码类改动按项目规范跑：`moon info && moon fmt`，再跑 `moon check`、`moon test`；改到输出时用 `moon test --update` 刷新快照。
 - 确认 `.mbti` 的 diff 符合预期，没有把生成物、`_build/` 或临时文件加入暂存区。
 - 只提交与本次任务相关的文件；用户未要求时不要提交其工作区里的其他修改。
+- 改了公开 API、错误消息或用户可见行为时，在正文末尾写一行 `Doc impact: <更新的文档路径>`；没有用户可见变化时写 `Doc impact: none (no user-visible change)`。错误消息以 `docs/reference/errors.md` 为准。模板见 `.github/commit_template.txt`，需要时用 `git config commit.template .github/commit_template.txt` 启用。
 - 提交后报告：提交哈希、message、包含的文件范围，以及测试结果。
 
 ## 五、推送与发布（`moon publish`）

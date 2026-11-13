@@ -1,23 +1,23 @@
-# 测试规范
+# Testing conventions
 
-## 1. MoonBit 测试的四种写法
+## 1. Four ways to write MoonBit tests
 
-| 名字 | 写法 | 能看到什么 | 用途 |
+| Name | How it is written | What it can see | Purpose |
 |---|---|---|---|
-| 内联测试 | 写在普通 `.mbt` 里，紧挨着被测函数 | 包内所有成员，包括私有的 | 和被测代码放在同一个文件，改动时不用切换文件 |
-| 白盒测试 | 写在 `_wbtest.mbt` 里 | 包内所有成员，包括私有的 | 测内部实现，会用到私有函数或字段 |
-| 黑盒测试 | 写在 `_test.mbt` 里 | 只有 `pub` 的公开 API | 站在用户角度测公开 API |
-| 文档示例 | 写在公开函数的 `///` 注释里 | 包内所有成员，包括私有的 | 既是文档里的例子，也当测试跑 |
+| Inline test | Written in a normal `.mbt` file, right next to the function under test | Every member in the package, including private ones | Lives in the same file as the code under test, no file switching while changing it |
+| White-box test | Written in `_wbtest.mbt` | Every member in the package, including private ones | Tests internal implementation, uses private functions or fields |
+| Black-box test | Written in `_test.mbt` | Only the `pub` public API | Tests the public API from a user's point of view |
+| Doc example | Written in the `///` comment of a public function | Every member in the package, including private ones | Both an example in the docs and a test that runs |
 
-前三种用的都是 `test { }` 语法，区别只在放哪。第四种（文档示例）见第 3 节。
+The first three all use the `test { }` syntax; the only difference is where they live. The fourth (doc example) is covered in section 3.
 
 ---
 
-## 2. `moon.pkg` 中测试包的依赖配置
+## 2. Test package dependency configuration in `moon.pkg`
 
-`_test.mbt` 和 `_wbtest.mbt` 是两个独立的包，各自有自己的 `import` 段。测试代码用到的依赖要写进对应的段：
+`_test.mbt` and `_wbtest.mbt` are two separate packages, each with its own `import` section. Dependencies used by test code must be written in the matching section:
 
-```
+```text
 import {
   "MuVirus/moonfig/core" @config,
 } for "test"
@@ -27,21 +27,21 @@ import {
 } for "wbtest"
 ```
 
-- 写在 `for "test"` 段里的依赖，`_test.mbt` 能用
-- 写在 `for "wbtest"` 段里的依赖，`_wbtest.mbt` 能用
-- 普通 `.mbt` 文件用到的依赖，写在最上面不带 `for` 的 `import` 块里
+- Dependencies in the `for "test"` section can be used by `_test.mbt`
+- Dependencies in the `for "wbtest"` section can be used by `_wbtest.mbt`
+- Dependencies used by normal `.mbt` files go in the top `import` block without `for`
 
-写错段会报 `0071` 未导入错误。
+Writing a dependency in the wrong section reports the `0071` not-imported error.
 
 ---
 
-## 3. 文档注释中的 `mbt check` 示例
+## 3. `mbt check` examples in doc comments
 
-文档注释里的代码块可以标记成 `mbt check`，表示这段代码要参与编译和运行。
+A code block in a doc comment can be marked `mbt check`, meaning the code takes part in compilation and execution.
 
 ````moonbit
 ///|
-/// 用一个 `Value` 构造 `MemorySource`
+/// Builds a `MemorySource` from a `Value`
 ///
 /// Example:
 ///
@@ -56,19 +56,19 @@ import {
 pub fn MemorySource::new(table : Value) -> MemorySource {
 ````
 
-写的是 `test { }`，所以它同时满足三件事：
+It is written as `test { }`, so it does three things at once:
 
-1. **会渲染到生成的文档里** —— 用户在 API 页面上直接看到能跑的用法
-2. **会被类型检查** —— API 签名变了，示例立刻报 `4014`
-3. **会被真正执行** —— 示例里的断言失效了，`moon test` 立刻报 FAILED
+1. **It renders into the generated docs** — users see a runnable usage directly on the API page
+2. **It is type-checked** — when the API signature changes, the example immediately reports `4014`
+3. **It is actually executed** — when an assertion in the example breaks, `moon test` immediately reports FAILED
 
-第 2、3 条是普通文字注释做不到的。**写在文档里的文字示例会过期**：改了 API，那段代码还是老的，没人发现。而 `mbt check` 的示例不会过期，它由和真实测试同一套机制检查。
+Items 2 and 3 are what a plain prose comment cannot do. **Prose examples written in docs go stale**: after the API changes, that code is still old and nobody notices. An `mbt check` example does not go stale, because it is checked by the same mechanism as real tests.
 
 ### 3.1 `mbt nocheck`
 
-`mbt nocheck` 是另一种标记，表示这段文档代码**不参与校验**，只作为示例展示。
+`mbt nocheck` is another marker, meaning this doc code **takes no part in validation** and is shown only as an example.
 
-用在代码在当前包的上下文里编译不过的时候。典型的是带 `import` 的用户侧片段——库自己的包里没有那些依赖：
+Use it when the code does not compile in the context of the current package. The typical case is a user-side snippet that carries `import` — the library's own package does not have those dependencies:
 
 ````moonbit
 /// ```mbt nocheck
@@ -78,42 +78,42 @@ pub fn MemorySource::new(table : Value) -> MemorySource {
 /// ```
 ````
 
-README 里的片段属于这种情况，所以 README 用 `nocheck`。
+The snippets in the README fall into this case, so the README uses `nocheck`.
 
 ---
 
-## 4. 选择规则
+## 4. Selection rules
 
-```
-这段代码在讲什么？
+```text
+What is this code about?
 │
-├─ 怎么用这个公开 API  ────────────► 文档注释 + ```mbt check
-│                                    （既是示例又是测试，还能进文档）
+├─ How to use this public API ────────► doc comment + ```mbt check
+│                                      (both example and test, and it goes into the docs)
 │
-├─ 内部逻辑对不对（涉及私有函数）──► _wbtest.mbt
-│                                    （成组场景：错误分支、边界、回归）
+├─ Is the internal logic correct (involves private functions) ──► _wbtest.mbt
+│                                      (grouped scenarios: error branches, boundaries, regressions)
 │
-├─ 用户能不能用（只碰 pub API）────► _test.mbt
-│                                    （用户视角的完整用法）
+├─ Can users use it (touches only pub API) ──► _test.mbt
+│                                      (complete usage from the user's point of view)
 │
-└─ 给一个小函数补测试 ──────────────► 内联在 .mbt 里
-                                     （少见，本项目不用）
+└─ Add a test for a small function ───► inline in .mbt
+                                       (rare, not used in this project)
 ```
 
-**公开 API 一律用文档示例，不要用内联测试。** 因为文档示例能做内联测试的全部事，还额外能在文档里被看到。内联测试没有这个优势。
+**Always use doc examples for public API, never inline tests.** Because a doc example can do everything an inline test can, and it is additionally visible in the docs. Inline tests do not have this advantage.
 
 ---
 
-## 附录
+## Appendix
 
-### 黑盒与白盒
+### Black box and white box
 
-黑盒测试：把被测代码当成一个不透明的盒子，只用它公开的接口去测，不看内部实现。
-白盒测试：打开盒子看内部实现，可以直接访问私有函数和私有字段。
+Black-box testing: treat the code under test as an opaque box and test it only through its public interface, without looking at the internal implementation.
+White-box testing: open the box and look at the internal implementation, with direct access to private functions and private fields.
 
-MoonBit 把这两种测试编译成两个独立的包：
+MoonBit compiles these two kinds of tests into two separate packages:
 
-- `_wbtest.mbt` → 白盒测试包，能看到包内一切，包括私有函数、私有字段
-- `_test.mbt` → 黑盒测试包，只能看到 `pub` 的东西
+- `_wbtest.mbt` → the white-box test package, which can see everything in the package, including private functions and private fields
+- `_test.mbt` → the black-box test package, which can see only `pub` things
 
-区别的意义在于黑盒测试能发现一类问题：一个只在 `_wbtest.mbt` 里能跑通的测试，一旦你把被测函数从 `pub` 改成 `priv`、或者重命名，黑盒测试不会报错，但用户已经用不了这个 API 了。黑盒测试用的是公开 API，所以能提前发现这种破坏。
+The point of the distinction is that black-box tests catch a class of problem: once you change the function under test from `pub` to `priv`, or rename it, a test that only runs in `_wbtest.mbt` does not report an error, but users can no longer use that API. Black-box tests use the public API, so they catch this kind of breakage early.

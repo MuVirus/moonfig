@@ -1,41 +1,43 @@
-# 自动发现格式
+# Automatic format detection
 
-目标：调用方只给路径和一组候选格式，库自己决定用哪个解析器。判断错比直接报错更糟，所以规则要可预测。
+> **Conclusion**: suffix first, then content in candidate order; if nothing looks right, raise `UnknownFormat`; never guess a parser and force it to parse.
+> **Authority**: Normative — detection order, duplicate suffixes and `sniff` boundaries follow this document; signatures follow `.mbti`.
+> **Out of scope**: Examples are in [examples/format_detect](../../examples/format_detect/README.md); history is in [decisions.md](../decisions/decisions.md).
 
-## 判断顺序
+## Detection order
 
-1. **后缀认识 → 用对应格式。** 后缀是调用方的声明，优先级最高；哪怕内容看起来像另一种格式，也按后缀解析。解析失败就报错，不换下一个候选，否则错误里的位置会来自另一个解析器。
-2. **后缀没有或不认识 → 按候选顺序看内容。** 第一个 `sniff` 认为「像」的格式胜出。顺序就是优先级，特征强的候选放前面。
-3. **都不像 → 报 `UnknownFormat`。** 错误消息列出候选格式声明的后缀，不猜一个解析器硬解析。
+1. **Known suffix → use the corresponding format.** The suffix is the caller's declaration and has the highest priority; even if the content looks like another format, parse by suffix. If parsing fails, report the error rather than moving to the next candidate, otherwise positions in the error would come from another parser.
+2. **No suffix or unknown suffix → look at content in candidate order.** The first format whose `sniff` says "looks like it" wins. The order is the priority; put candidates with strong traits first.
+3. **Nothing looks right → raise `UnknownFormat`.** The error message lists the suffixes declared by the candidates, and does not guess a parser to force-parse.
 
-同一个后缀被两个候选认领时，`Detector::new` 直接报错。让顺序决定赢家会把配置错误藏起来，等到换候选顺序时才暴露。
+When two candidates claim the same suffix, `Detector::new` errors directly. Letting the order decide the winner would hide a config error until the candidate order changes.
 
-## 内容判断的边界
+## Boundaries of content detection
 
-`sniff` 只回答「像不像」，不负责证明「能不能解析」：
+`sniff` only answers "does it look like it", not "can it be parsed":
 
-- JSON、CBOR、XML 的特征足够强：首个非空白字符，或首字节的 CBOR major type。
-- YAML、TOML 只能看行结构，天然会互相重叠；候选顺序决定谁先被问。
-- INI 和 `.env` 内容上分不开，只认后缀，不参与内容判断。
+- JSON, CBOR and XML have strong enough traits: the first non-whitespace character, or the CBOR major type of the first byte.
+- YAML and TOML can only look at line structure and naturally overlap; candidate order decides who is asked first.
+- INI and `.env` are indistinguishable by content; they are recognized only by suffix and take no part in content detection.
 
-用完整解析来判断格式会让「内容坏了」和「格式不对」混在一起，也会把一个候选的语法错误当成另一个候选的失败。`sniff` 保持廉价、保守，真正的错误留给选中的解析器。
+Using a full parse to judge format would mix "the content is broken" with "the format is wrong", and would treat one candidate's syntax error as another candidate's failure. `sniff` stays cheap and conservative; real errors are left to the selected parser.
 
-## 接口与位置
+## Interface and location
 
-`Format` 在 `core/` 里提供三样自我介绍：
+`Format` provides three self-descriptions in `core/`:
 
-- `suffixes`：不带点的后缀列表，默认空。
-- `sniff`：只看开头，默认 `false`。
-- `decode_path`：知道路径时先看后缀，默认直接 `decode`。
+- `suffixes`: list of suffixes without dots, empty by default.
+- `sniff`: looks only at the beginning, `false` by default.
+- `decode_path`: checks the suffix first when the path is known, otherwise just `decode`.
 
-[`format_detect/`](../../format_detect/) 提供 `Detector`，负责归一化后缀、检查重复声明、按候选顺序做内容判断。它不读文件，也不依赖平台 API。
+[`format_detect/`](../../format_detect/) provides `Detector`, which normalizes suffixes, checks duplicate declarations and does content detection in candidate order. It reads no files and depends on no platform API.
 
-候选表由调用方给：core 不能反向 import 格式包，格式包也没有运行时自注册。这样只用 JSON 的项目不必被迫链上 YAML、XML 和 CBOR；需要默认列表时，由应用自己 import 并组装。
+The caller supplies the candidate table: core cannot import format packages in reverse, and format packages have no runtime self-registration. So a project using only JSON is not forced to link YAML, XML and CBOR; when a default list is needed, the application imports and assembles it.
 
-[`FileSource::auto`](../../file_source/file_source.mbt) 在 `file_source/` 里把路径和已读出的字节交给 `Detector`；普通 `FileSource::new` 仍然直接使用传入的 `Format`。`StringSource` / `BytesSource` 没有路径，把 `Detector` 当普通 `Format` 用即可，只做内容判断。
+[`FileSource::auto`](../../file_source/file_source.mbt) in `file_source/` hands the path and the already-read bytes to `Detector`; ordinary `FileSource::new` still uses the given `Format` directly. `StringSource` / `BytesSource` have no path, so just use `Detector` as a normal `Format`; it only does content detection.
 
-## 示例
+## Example
 
-[examples/format_detect](../../examples/format_detect/README.md) 用 `.toml`、`.yaml` 和后缀不认识的 JSON 文件演示后缀优先与内容回退。
+[examples/format_detect](../../examples/format_detect/README.md) demonstrates suffix priority and content fallback with `.toml`, `.yaml` and a JSON file with an unknown suffix.
 
-相关：[sources.md](sources.md) 说明 `Format` 与 `Source` 的分工，[roadmap.md](../plan/roadmap.md) 记录实现进度。
+Related: [sources.md](sources.md) explains the division between `Format` and `Source`; [roadmap.md](../plan/roadmap.md) records implementation progress.
