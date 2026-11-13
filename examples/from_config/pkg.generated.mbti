@@ -1,19 +1,11 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "MuVirus/moonfig/examples/from_config"
 
-import {
-  "moonbitlang/core/json",
-}
-
 // Values
 
 // Errors
 
 // Types and methods
-#derive(@json.FromJson)
-type DbCfg
-pub fn DbCfg::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-
 type PoolCfg
 
 type ServerCfg

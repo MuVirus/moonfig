@@ -27,6 +27,7 @@ struct TextualPort {
 
 ## 输出
 
+<!-- example-output -->
 ```text
 == Read by key ==
 numeric source get_int    -> 5432

@@ -45,4 +45,22 @@ watcher.poll()
 
 只保留当前快照，没有历史版本，所以这里是「继续用旧的」，不是「回退到上一版」。
 
+## 输出
+
+<!-- example-output -->
+```text
+initial: db.port = 5432
+no file change, poll() = false
+on_change: db.port = 6543
+file changed, poll() = true
+current: db.port = 6543
+on_error: parse error: Invalid character 'o' at line 1, column 1
+bad config written, poll() = false
+still the old value: db.port = 6543
+on_change: db.port = 7000
+fixed, poll() = true
+current: db.port = 7000
+stopped = true
+```
+
 设计取舍见 [`docs/design/hot-reload.md`](../../docs/design/hot-reload.md)，完整代码见 [`main.mbt`](main.mbt)。

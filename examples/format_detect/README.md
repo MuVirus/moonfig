@@ -28,6 +28,16 @@ let detector = Detector::new([
 
 后缀认识但解析失败时不会换下一个候选，而是直接报错。否则错误位置会来自另一个解析器，反而更难查。
 
+## 输出
+
+<!-- example-output -->
+```text
+examples/format_detect/config/app.toml -> db.port = 5432
+examples/format_detect/config/legacy.yaml -> db.port = 7000
+examples/format_detect/config/feature.conf -> db.port = 6543
+expected failure: unknown format for examples/format_detect/config/notes.txt: suffix not recognized and content matches no candidate; supported suffixes: .json / .toml / .yaml / .yml
+```
+
 ## 代码位置
 
 示例入口是 [`main.mbt`](main.mbt)，候选构造和三个文件的读取都在里面。设计取舍见 [`docs/design/format-detect.md`](../../docs/design/format-detect.md)。

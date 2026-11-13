@@ -46,23 +46,36 @@ moon run examples/multi_source -- --log-level=debug
 
 `origin_of` 返回的 `kind()` 可以直接模式匹配，用来分支；`path()` 给结构化的层级路径；`label()` 只用来展示和写错误消息，按需生成，不反解析。每个值只存一个指向来源对象的引用，不存 label 字符串。
 
-`origins()` 能一次列出所有叶子路径和来源，适合做 `--print-config` 这类诊断命令：
-
-```text
-db.host        file:examples/multi_source/config/app.json
-db.port        env:APP_DB_PORT
-db.password    env:APP_DB_PASSWORD
-log.level      cli:--log-level
-feature.debug  memory
-```
+`origins()` 能一次列出所有叶子路径和来源，适合做 `--print-config` 这类诊断命令。完整输出见文末。
 
 ## 错误消息
 
-取值失败的消息说清键名、期望和实际；要追来源，用 `origin_of` 单独问：
+取值失败的消息说清键名、期望和实际；要追来源，用 `origin_of` 单独问。完整输出见文末。
 
+## 输出
+
+<!-- example-output -->
 ```text
-key 'db.port': expected Int, got Str
-origin_of("db.port") -> env:APP_DB_PORT
+== Effective values ==
+db.host    = db.internal
+db.port    = 6543
+db.password= s3cret
+log.level  = debug
+feature.debug = false
+
+== Origin of each value ==
+db.host       <- file:examples/multi_source/config/app.json
+db.port       <- env:APP_DB_PORT
+db.password   <- env:APP_DB_PASSWORD
+log.level     <- cli:--log-level
+feature.debug <- memory
+
+== What --print-config would list ==
+db.host  file:examples/multi_source/config/app.json
+db.port  env:APP_DB_PORT
+db.password  env:APP_DB_PASSWORD
+log.level  cli:--log-level
+feature.debug  memory
 ```
 
 ## 边界

@@ -75,6 +75,7 @@ Rule::custom("db.host", "non-empty and without spaces", fn(value) {
 
 `examples/validate/main.mbt` 里的配置故意写坏了：端口 70000、用户名为空、日志级别 `verbose`、`db` 下多了一个 `extra`。
 
+<!-- example-output -->
 ```text
 == 1. Validate by key: stop at the first error ==
 invalid value for key 'db.port': expected 1..65535, got 70000
