@@ -29,7 +29,8 @@ The extended explanation and trade-offs are in `design/`; to find docs by code, 
 | `file_source/`, `env_source/`, `cli_source/` | [sources.md](design/sources.md), [cli-args.md](design/cli-args.md) |
 | `format_detect/` | [format-detect.md](design/format-detect.md) |
 | `hot_reload/` | [hot-reload.md](design/hot-reload.md) |
-| `serde_bridge/`, `FromConfig` | [extract.md](design/extract.md) |
+| `FromConfig`, `core/from_config.mbt` | [from_config.md](design/from_config.md) |
+| `serde_bridge/`, `derive(FromJson)` | [extract.md](design/extract.md) |
 | Validation | [validate.md](design/validate.md) |
 | `core/error.mbt`, error messages | [errors.md](reference/errors.md) |
 | `examples/` | [examples/README.md](../examples/README.md) |

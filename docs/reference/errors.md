@@ -2,7 +2,7 @@
 
 > **Conclusion**: `ConfigError` has eight variants. Every message names the key and, where it applies, the expected and actual values.
 > **Authority**: Normative — variant fields and `Show` text follow this document; the enum and its implementation are in `core/error.mbt`.
-> **Out of scope**: How extraction maps standard-library JSON errors is in [extract.md](../design/extract.md#2-error-messages); validation rules are in [validate.md](../design/validate.md).
+> **Out of scope**: How extraction maps standard-library JSON errors is in [extract.md](../design/extract.md#error-messages); validation rules are in [validate.md](../design/validate.md).
 
 `ConfigError` is the only error type that crosses the library boundary. Getters, extraction, sources, formats and validation all raise it, so callers catch one type.
 

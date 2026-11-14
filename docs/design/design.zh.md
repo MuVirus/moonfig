@@ -88,7 +88,8 @@ cfg.get_bytes("cert")            // Bytes
 ## 设计文档
 
 - [sources.md](sources.zh.md) —— Source / Format 模型、package 划分与来源追踪
-- [extract.md](extract.zh.md) —— 提取到结构体、整数映射、标准库错误映射
+- [extract.md](extract.zh.md) —— 提取到结构体：`FromConfig`、serde 与实验性的 `derive(FromJson)`，适配器的 Json 映射和错误翻译
+- [from_config.md](from_config.zh.md) —— 默认提取路径：`FromConfig`、`Getter` 语义、原生 `Int64`
 - [validate.md](validate.zh.md) —— 校验：按键规则表、结构体 `Validate`、未知键
 - [format-detect.md](format-detect.zh.md) —— 自动发现格式：后缀优先、内容判断、候选顺序
 - [hot-reload.md](hot-reload.zh.md) —— 热更新：快照替换、文件轮询、失败保留旧配置

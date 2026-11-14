@@ -30,7 +30,8 @@
 | `file_source/`、`env_source/`、`cli_source/` | [sources.md](design/sources.zh.md)、[cli-args.md](design/cli-args.zh.md) |
 | `format_detect/` | [format-detect.md](design/format-detect.zh.md) |
 | `hot_reload/` | [hot-reload.md](design/hot-reload.zh.md) |
-| `serde_bridge/`、`FromConfig` | [extract.md](design/extract.zh.md) |
+| `FromConfig`、`core/from_config.mbt` | [from_config.md](design/from_config.zh.md) |
+| `serde_bridge/`、`derive(FromJson)` | [extract.md](design/extract.zh.md) |
 | 校验 | [validate.md](design/validate.zh.md) |
 | `core/error.mbt`、错误消息 | [errors.md](reference/errors.zh.md) |
 | `examples/` | [examples/README.md](../examples/README.md) |

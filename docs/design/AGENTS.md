@@ -8,7 +8,8 @@ Design documents explain "why it is defined this way": trade-offs, boundaries, p
 - [`design.md`](design.md) —— the main line and the core data model
 - [`sources.md`](sources.md) —— Source / Format interfaces, core boundary, package layout, origin tracking, trade-offs of third-party parsers
 - [`cli-args.md`](cli-args.md) —— command-line arguments: value style, short option registration, array declaration, positional mapping, conflicts and origin labels
-- [`extract.md`](extract.md) —— extraction into structs, integer mapping, standard-library error mapping
+- [`extract.md`](extract.md) —— extraction into a struct: the three paths (`FromConfig`, serde, experimental `derive(FromJson)`), the adapter Json mapping and error translation
+- [`from_config.md`](from_config.md) —— the default extraction path: `FromConfig`, the `Getter` family and its strictness
 - [`validate.md`](validate.md) —— validation: per-key rule table, struct `Validate`, unknown keys, errors
 - [`format-detect.md`](format-detect.md) —— automatic format detection: suffix first, content sniffing, candidate order
 - [`hot-reload.md`](hot-reload.md) —— hot reload: snapshot replacement, file polling, keep the old config on failure

@@ -2,7 +2,7 @@
 
 > **结论**：`ConfigError` 有八个变体。每条消息都写清键名；适用时还写清期望值和实际值。
 > **权威边界**：规范——变体字段和 `Show` 文案以本文为准；枚举和实现以 `core/error.mbt` 为准。
-> **不覆盖**：提取时怎么把标准库的 JSON 错误翻译过来见 [extract.md](../design/extract.zh.md#2-错误消息)；校验规则见 [validate.md](../design/validate.zh.md)。
+> **不覆盖**：提取时怎么把标准库的 JSON 错误翻译过来见 [extract.md](../design/extract.zh.md#错误消息)；校验规则见 [validate.md](../design/validate.zh.md)。
 
 `ConfigError` 是唯一跨库边界的错误类型。取值、提取、来源、格式和校验都抛它，调用方只捕一种类型。
 

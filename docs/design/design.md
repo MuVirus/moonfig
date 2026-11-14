@@ -90,7 +90,8 @@ The single UX standard: when users see an error, they immediately know **which k
 ## Design documents
 
 - [sources.md](sources.md) —— Source / Format model, package layout and origin tracking
-- [extract.md](extract.md) —— extraction into structs, integer mapping, standard-library error mapping
+- [extract.md](extract.md) —— extraction into a struct: `FromConfig`, serde and the experimental `derive(FromJson)`, adapter Json mapping and error translation
+- [from_config.md](from_config.md) —— the default extraction path: `FromConfig`, `Getter` semantics, native `Int64`
 - [validate.md](validate.md) —— validation: per-key rule table, struct `Validate`, unknown keys
 - [format-detect.md](format-detect.md) —— automatic format detection: suffix first, content sniffing, candidate order
 - [hot-reload.md](hot-reload.md) —— hot reload: snapshot replacement, file polling, keep the old config on failure

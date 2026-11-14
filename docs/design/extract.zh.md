@@ -1,12 +1,59 @@
 # 提取到结构体
 
-> **结论**：`FromConfig` 是默认提取路径；`derive(FromJson)` 和 `serde_bridge` 是可选适配器。
-> **权威边界**：规范——三条路径的类型映射和错误翻译以本文为准；签名以 `.mbti` 为准。
-> **不覆盖**：选择步骤见 [choose-extraction.md](../guides/choose-extraction.zh.md)，历史见 [decisions.md](../decisions/decisions.zh.md)。
+> **结论**：三条路径把配置子树读进结构体：`FromConfig` 是默认路径，serde（`serde_bridge`）是给已有 serde 描述的类型准备的可选适配器，`derive(FromJson)` 是实验性路径，放在最后考虑。
+> **权威边界**：规范——serde 与 Json 适配器的映射和错误翻译以本文为准，`FromConfig` 的语义以 [from_config.md](from_config.zh.md) 为准；签名以 `.mbti` 为准。
+> **不覆盖**：默认路径见 [from_config.md](from_config.zh.md)；三条路径怎么选见 [choose-extraction.md](../guides/choose-extraction.zh.md)；历史见 [decisions.md](../decisions/decisions.zh.md)。
 
-## 1. 接口
+## 1. `FromConfig`
 
-默认提取走 `FromConfig`（见第 3 节）。下面是 `derive(FromJson)` 适配器的入口：
+默认路径：实现 `FromConfig`，每个字段写一行，`Getter` 直接读 `Value`，不经过 JSON，也不引入额外依赖。标签、默认值和嵌套都在调用点决定：
+
+```moonbit nocheck
+impl @config.FromConfig for Server with fn from_config(get : @config.Getter) -> Server raise @config.ConfigError {
+  { host: get.string("db-host"), port: get.int("port") }
+}
+let srv : Server = cfg.get_struct("server")
+```
+
+形状、`Getter` 家族、严格性以及为什么它是默认路径见 [from_config.md](from_config.zh.md)。这条路径还能和两个适配器在字段级混搭：`json_field` / `serde_field` 委托一个字段，嵌套结构体可以换一条路径，不必重写整棵树。
+
+## 2. 结合 serde（`serde_bridge`）
+
+[MoonBit 社区的 serde 框架](https://github.com/moonbit-community/serde.mbt)（`moonbit-community/serde.mbt`）把"类型描述自己的形状"和"格式读写数据模型"分开：类型实现 `Deserialize`（手写或由它的 derive 生成器生成），格式实现 `Deserializer`。`serde_bridge` 包给 moonfig 的 `Value` 写了一个 `Deserializer` 后端，任何 serde 类型都能直接从配置里提取：
+
+```moonbit nocheck
+// 类型侧：serde 用户既有代码，moonfig 不感知
+impl @serde.Deserialize for Server with fn deserialize(d) -> Server raise @serde.DeError {
+  d.deserialize_struct_begin("Server", ["db-host", "port"])
+  // ... struct 协议逐字段读，required 收尾
+}
+
+// moonfig 侧：三个入口
+let srv : Server = @serde_bridge.extract_serde(value)          // 整棵树
+let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // 按键
+db: @serde_bridge.serde_field(get, "db"),                      // FromConfig 字段级委托
+```
+
+语义与 serde 自带的 `Value` 后端对齐，且与 moonfig 的严格性一致：整数只收 `Int` 节点
+（范围检查，浮点不截断、字符串不解析），`deserialize_double` 加宽整数（同 `get_float`），
+字符串来源不能变数字或字节串。`DeError` 在入口翻译成 `ConfigError`：serde 的
+`MissingField`/`InvalidType`/`InvalidValue` 分别对应 `MissingKey`/`TypeMismatch`/
+`InvalidValue`，键名接上提取前缀（`$.db.port` → `key 'srv.db.port'`）。
+
+依赖说明：moon.mod 因此引入 `moonbit-community/serde.mbt@0.3.1`（其自身只依赖
+moonbitlang core，另有 parser/async 供它的 derive 生成器使用）。不使用 serde 的用户
+不受影响：core 与 json_format 都不依赖它，现有 API 零变化。
+
+可运行的完整示例（类型属性 + 生成器产物 + 三个入口）见
+[examples/serde_extract](../../examples/serde_extract/README.md)。
+
+## 3. `derive(FromJson)`（实验性）
+
+这是最后才考虑的路径。入口带 `#alert(experimental, ...)`，使用时会报 `alert_experimental`，API 和
+严格性探针都可能在小版本之间变化。优先用 [FromConfig](#1-fromconfig)；要继续用这个适配器，
+在 `moon.pkg` 里用 `warnings = "-alert_experimental"` 关掉提示。
+
+这个适配器有三个入口：
 
 ```moonbit
 pub fn[T : FromJson] extract(v : Value) -> T raise ConfigError
@@ -57,7 +104,7 @@ JSON 解码打开了 `preserve_number_repr=true`，所以 `1.0`、`1e2`、`-0.0`
 
 `Bytes` 是同一个道理：标准库的 `ToJson for Bytes` 把可打印 ASCII 原样输出、其余写成 `\xHH`，而 `FromJson for Bytes` 读的就是同一套格式（`moonbitlang/core/json/from_json.mbt:309`）。两头都是标准库的实现，不用库自己写编码器，也不会和标准库走偏。
 
-## 2. 错误消息
+### 错误消息
 
 `derive(FromJson)` 抛的是 `JsonDecodeError((JsonPath, String))`，`JsonPath` 的 `Show` 是 JSON Pointer（`/db/port`）。`extract` 拿这个路径反查 `Value`，翻成和 `get_*` 同一套错误：
 
@@ -69,80 +116,3 @@ JSON 解码打开了 `preserve_number_repr=true`，所以 `1.0`、`1e2`、`-0.0`
 | 结构体写了 `Int64`（`expected number in string representation`） | `ParseError("key 'db.port' is a 64-bit integer: declare the struct field as Int64Text or use get_int")` |
 
 期望类型从标准库的消息前缀取（`String` → `Str`，`Double` → `Float`，`Map` → `Table`），实际类型从 `Value` 反查，所以消息里的名字和 `get_*` 一致。变体字段和消息原文见 [errors.md](../reference/errors.zh.md)。
-
-## 3. 默认提取（`FromConfig`）：字段标签
-
-`FromConfig` 是默认的提取路径：逐字段从 `Value` 读取，不走 Json。每个字段的
-**标签内联在调用点**：
-
-```moonbit nocheck
-impl @config.FromConfig for Server with fn from_config(get : @config.Getter) -> Server raise @config.ConfigError {
-  {
-    host: get.string("db-host"),          // 标签改名：配置键与字段名解耦
-    port: get.int("port"),                // 原生 Int64，不用 Int64Text
-    retry: get.int32_or("retry", 3),      // 缺省值
-    comment: get.opt_string("comment"),   // 可选：缺失或 null 都是 None
-    tags: get.strings("tags"),            // 数组
-    db: @jsonfmt.json_field(get, "db"),   // 嵌套结构体走 derive(FromJson)，一行委托
-  }
-}
-let srv : Server = config.get_struct("server")
-```
-
-入口有三个：`Config::get_struct`（按键取子树）、`Config::get_struct_validated`
-（提取后跑 `Validate`）、`Value::to_struct`（原语，标签相对该值解析）。
-
-### Getter 的语义
-
-| 方法族 | 行为 |
-|---|---|
-| `string` / `bool` / `int` / `int32` / `uint64` / `float` / `float_strict` / `bytes` | 必填：缺失报 `MissingKey`，类型不符报 `TypeMismatch`，口径同 `get_*` |
-| `*_or` | 缺失用默认值；**键存在但类型不符（或越界）仍然报错**，绝不静默落默认 |
-| `opt_*` | 缺失或 `null` 都是 `None`；类型不符照常报错 |
-| `strings` / `ints` / `floats` / `bools` / `structs` | 元素错误带下标路径（`server.tags.1`） |
-| `nested` | 子 Getter 前缀接上标签，嵌套结构体递归走 `from_config` |
-| `value` / `opt_value` | 逃生舱：拿原始 `Value` 自己 match |
-
-和 `get_*` 一样的严格性：`int` 只收整数来源（精确 `Int64`，这条路径直接读 `Value`，
-不走 Json，9007199254740993 这类大整数不丢）；`float` 加宽整数、`float_strict` 不加宽；
-字符串来源永不变成数字或字节串。没有 Json 往返、没有探针，性能比 derive 路径好。
-
-### 和 derive 路径的分工
-
-MoonBit 没有反射，字段和标签的对应关系只能在调用点建立——**即使标签等于字段名，
-也要在 impl 里写一遍**。默认走 `FromConfig`：它在 core 里、零依赖，和 `get_*` 同一套
-语义，也不经过 Json。`derive(FromJson)` 是可选适配器，适合字段名全等于配置键、
-不需要默认值、没有 64 位字段的简单结构；它经过 `Value → Json` 和标准库的 `FromJson`，
-严格性靠探针模拟，不是构造上的保证。嵌套结构体若继续用 derive 路径，字段里用
-`json_field` 一行委托，不用逐字段手写。逐字段一行的代价与 `Validate` impl 相同，
-是手写换控制力。
-
-## 4. 结合 serde（`serde_bridge`）
-
-[MoonBit 社区的 serde 框架](https://github.com/moonbit-community/serde.mbt)（`moonbit-community/serde.mbt`）把"类型描述自己的形状"和"格式读写数据模型"分开：类型实现 `Deserialize`（手写或由它的 derive 生成器生成），格式实现 `Deserializer`。`serde_bridge` 包给 moonfig 的 `Value` 写了一个 `Deserializer` 后端，任何 serde 类型都能直接从配置里提取：
-
-```moonbit nocheck
-// 类型侧：serde 用户既有代码，moonfig 不感知
-impl @serde.Deserialize for Server with fn deserialize(d) -> Server raise @serde.DeError {
-  d.deserialize_struct_begin("Server", ["db-host", "port"])
-  // ... struct 协议逐字段读，required 收尾
-}
-
-// moonfig 侧：三 个入口
-let srv : Server = @serde_bridge.extract_serde(value)          // 整棵树
-let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // 按键
-db: @serde_bridge.serde_field(get, "db"),                      // FromConfig 字段级委托
-```
-
-语义与 serde 自带的 `Value` 后端对齐，且与 moonfig 的严格性一致：整数只收 `Int` 节点
-（范围检查，浮点不截断、字符串不解析），`deserialize_double` 加宽整数（同 `get_float`），
-字符串来源不能变数字或字节串。`DeError` 在入口翻译成 `ConfigError`：serde 的
-`MissingField`/`InvalidType`/`InvalidValue` 分别对应 `MissingKey`/`TypeMismatch`/
-`InvalidValue`，键名接上提取前缀（`$.db.port` → `key 'srv.db.port'`）。
-
-依赖说明：moon.mod 因此引入 `moonbit-community/serde.mbt@0.3.1`（其自身只依赖
-moonbitlang core，另有 parser/async 供它的 derive 生成器使用）。不使用 serde 的用户
-不受影响：core 与 json_format 都不依赖它，现有 API 零变化。
-
-可运行的完整示例（类型属性 + 生成器产物 + 三个入口）见
-[examples/serde_extract](../../examples/serde_extract/README.md)。

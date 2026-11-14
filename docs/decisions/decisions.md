@@ -24,9 +24,10 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #8 | `String::compare` compares length first | active | none (implementation only) |
 | #9 | Validation | active | design/validate.md |
 | #10 | Float widening and snapshots with origins | active | design/design.md, design/sources.md |
-| #11 | Hand-written `FromConfig` instead of derive labels | partially superseded (#13 changes the default extraction order) | design/extract.md, guides/choose-extraction.md |
+| #11 | Hand-written `FromConfig` instead of derive labels | partially superseded (#13 changes the default extraction order) | design/from_config.md, design/extract.md, guides/choose-extraction.md |
 | #12 | serde integration in its own package, not in core | active | design/extract.md |
-| #13 | Default order of extraction paths | active (supersedes #11's default order) | design/extract.md, guides/choose-extraction.md |
+| #13 | Default order of extraction paths | active (supersedes #11's default order) | design/from_config.md, design/extract.md, guides/choose-extraction.md |
+| #14 | `derive(FromJson)` extraction is experimental | active | design/extract.md, design/from_config.md, guides/choose-extraction.md |
 
 ## 1. Package names cannot collide with MoonBit standard library package names
 
@@ -290,7 +291,7 @@ Status: active | Affects: design/design.md, design/sources.md
 
 ## 11. Hand-written `FromConfig` instead of derive labels
 
-Status: partially superseded (#13 changes the default extraction order) | Affects: design/extract.md, guides/choose-extraction.md
+Status: partially superseded (#13 changes the default extraction order) | Affects: design/from_config.md, design/extract.md, guides/choose-extraction.md
 
 > **Finalized 2026-11: the second struct extraction path is a hand-written trait
 > + `Getter`; neither derive nor external generation.**
@@ -354,7 +355,7 @@ Status: active | Affects: design/extract.md
 
 ## 13. Default order of extraction paths
 
-Status: active (supersedes #11's default order) | Affects: design/extract.md, guides/choose-extraction.md
+Status: active (supersedes #11's default order) | Affects: design/from_config.md, design/extract.md, guides/choose-extraction.md
 
 > **Revised 2026-11: `FromConfig` is the default extraction path, and
 > `derive(FromJson)` drops to an optional adapter.**
@@ -370,3 +371,21 @@ Status: active (supersedes #11's default order) | Affects: design/extract.md, gu
 > - The derive path is kept: for types that already implement `FromJson` it is a
 >   zero-boilerplate entry, and its cost is isolated by the `json_format` package
 >   boundary. Documentation no longer puts it on par with `FromConfig`.
+
+## 14. `derive(FromJson)` extraction is experimental
+
+Status: active | Affects: design/extract.md, design/from_config.md, guides/choose-extraction.md
+
+> **2026-11: keep `derive(FromJson)` extraction, but mark it experimental.**
+>
+> - The path goes `Value → Json → FromJson`, so strictness has to be rebuilt with
+>   probes: floats become `"NaN"` to catch truncation, strings become markers to
+>   catch implicit number parsing, and `Bytes` needs a reverse probe. 64-bit
+>   fields also need the `Int64Text` wrapper.
+> - The probes and the type mapping are measured in
+>   `core/format/json_format/extract.mbt` and `benchmarks/README.md`; they may
+>   change while the rules settle. The entry points carry
+>   `#alert(experimental, ...)`, so users see `alert_experimental` and can
+>   disable it with `warnings = "-alert_experimental"` in `moon.pkg`.
+> - The default stays `FromConfig` (#13); the experimental label does not remove
+>   the path.

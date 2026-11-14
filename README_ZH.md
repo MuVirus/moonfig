@@ -128,12 +128,12 @@ db.port = 6543
 
 ### 提取到结构体
 
-也可以把整棵配置读进自己的结构体。支持三种常见写法：手写字段映射、serde、`derive(FromJson)`。怎么选见
+也可以把整棵配置读进自己的结构体。支持三种常见写法：手写字段映射、serde、`derive(FromJson)`。手写映射是默认路径；`derive(FromJson)` 是实验性的，使用时会有 `alert_experimental` 提示。怎么选见
 [guides/choose-extraction.zh.md](docs/guides/choose-extraction.zh.md)；完整代码：
 
 - [examples/from_config](examples/from_config/README.md)
 - [examples/serde_extract](examples/serde_extract/README.md)
-- 设计取舍：[extract.zh.md](docs/design/extract.zh.md)
+- 设计取舍：[from_config.zh.md](docs/design/from_config.zh.md)（默认路径）、[extract.zh.md](docs/design/extract.zh.md)（三条路径）
 
 ### 更多示例
 

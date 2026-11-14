@@ -127,11 +127,11 @@ See [examples/strict_types](examples/strict_types/README.md) for strict typing a
 
 ### Extract into a struct
 
-You can also read the whole config into your own struct. Three common styles are supported: a handwritten field mapping, serde, and `derive(FromJson)`. To choose between them, see [guides/choose-extraction.md](docs/guides/choose-extraction.md). Full code:
+You can also read the whole config into your own struct. Three common styles are supported: a handwritten field mapping, serde, and `derive(FromJson)`. The handwritten mapping is the default; `derive(FromJson)` is experimental and emits `alert_experimental` when used. To choose between them, see [guides/choose-extraction.md](docs/guides/choose-extraction.md). Full code:
 
 - [examples/from_config](examples/from_config/README.md)
 - [examples/serde_extract](examples/serde_extract/README.md)
-- Design trade-offs: [extract.md](docs/design/extract.md)
+- Design trade-offs: [from_config.md](docs/design/from_config.md) (default path), [extract.md](docs/design/extract.md) (all three paths)
 
 ### More examples
 

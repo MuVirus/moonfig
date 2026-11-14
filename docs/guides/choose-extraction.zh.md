@@ -1,13 +1,13 @@
 # 提取到结构体：三选一
 
 把配置子树读进自己的结构体。三条路都保持严格类型；差别在控制力、依赖和类型改造量。
-接口和取舍见 [extract.md](../design/extract.zh.md)。
+默认路径见 [from_config.md](../design/from_config.zh.md)；适配器见 [extract.md](../design/extract.zh.md)。
 
 ## 适用场景
 
 - 配置键和字段名不一致、需要默认值或嵌套字段：用 `FromConfig`
 - 类型已经实现 serde 的 `Deserialize`，不想为配置再写一遍：用 `serde_bridge`
-- 结构体是简单 JSON 形状，字段名等于配置键：用 `derive(FromJson)`
+- 结构体是简单 JSON 形状，字段名等于配置键：用 `derive(FromJson)`（实验性，使用时会报 `alert_experimental`）
 
 ## 前置条件
 
@@ -17,7 +17,8 @@
   `#serde.derive(Deserialize)`），依赖 `serde_bridge`；它把 `Value` 接到 serde 后端
 - `derive(FromJson)`：由 `moonbitlang/core/json` 生成实现；类型加
   `#derive(@json.FromJson)`，再加一行 `pub extend T with @json.FromJson::{from_json}`；
-  依赖 `json_format`
+  依赖 `json_format`。这条路径是实验性的：使用时会报 `alert_experimental`，API 和严格性探针
+  都可能在小版本之间变化
 - 64 位整数：`FromConfig` 和 `serde_bridge` 直接读 `Value`，用 `Int64`；
   `derive(FromJson)` 经过 Json，用 `Int64Text`（`json_format` 的包装类型，
   `to_int64()` 取回）

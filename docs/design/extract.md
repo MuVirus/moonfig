@@ -1,12 +1,59 @@
-# Extraction into structs
+# Extraction into a struct
 
-> **Conclusion**: `FromConfig` is the default extraction path; `derive(FromJson)` and `serde_bridge` are optional adapters.
-> **Authority**: Normative — the type mapping and error translation of the three paths follow this document; signatures follow `.mbti`.
-> **Out of scope**: Choice steps are in [choose-extraction.md](../guides/choose-extraction.md); history is in [decisions.md](../decisions/decisions.md).
+> **Conclusion**: Three paths read a configuration subtree into a struct: `FromConfig` is the default, serde (`serde_bridge`) is an optional adapter for types that already carry a serde description, and `derive(FromJson)` is experimental and the last choice.
+> **Authority**: Normative — the serde and Json adapter mappings and their error translation follow this document; `FromConfig` semantics follow [from_config.md](from_config.md); signatures follow `.mbti`.
+> **Out of scope**: The default path is in [from_config.md](from_config.md); choice steps are in [choose-extraction.md](../guides/choose-extraction.md); history is in [decisions.md](../decisions/decisions.md).
 
-## 1. Interface
+## 1. `FromConfig`
 
-Default extraction goes through `FromConfig` (see section 3). Below are the entry points of the `derive(FromJson)` adapter:
+The default path: implement `FromConfig`, write one line per field, and the `Getter` reads `Value` directly, with no JSON round trip and no extra dependency. Labels, defaults and nesting are decided at the call site:
+
+```moonbit nocheck
+impl @config.FromConfig for Server with fn from_config(get : @config.Getter) -> Server raise @config.ConfigError {
+  { host: get.string("db-host"), port: get.int("port") }
+}
+let srv : Server = cfg.get_struct("server")
+```
+
+Shape, the `Getter` family, strictness and the reason this is the default are in [from_config.md](from_config.md). This path also composes with the two adapters at field level: `json_field` and `serde_field` delegate a single field, so a nested struct can take a different path without rewriting the tree.
+
+## 2. Combining with serde (`serde_bridge`)
+
+The [MoonBit community serde framework](https://github.com/moonbit-community/serde.mbt) (`moonbit-community/serde.mbt`) separates "types describing their own shape" from "formats reading and writing the data model": types implement `Deserialize` (by hand or via its derive generator), formats implement `Deserializer`. The `serde_bridge` package provides a `Deserializer` backend over moonfig's `Value`, so any serde type can be extracted straight from config:
+
+```moonbit nocheck
+// type side: existing serde user code, moonfig is unaware of it
+impl @serde.Deserialize for Server with fn deserialize(d) -> Server raise @serde.DeError {
+  d.deserialize_struct_begin("Server", ["db-host", "port"])
+  // ... the struct protocol reads field by field, required closes it
+}
+
+// moonfig side: three entry points
+let srv : Server = @serde_bridge.extract_serde(value)          // whole tree
+let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // by key
+db: @serde_bridge.serde_field(get, "db"),                      // FromConfig field-level delegation
+```
+
+Semantics align with serde's own `Value` backend and with moonfig's strictness: integers accept only `Int` nodes
+(range-checked, floats not truncated, strings not parsed), `deserialize_double` widens integers (like `get_float`),
+and a string origin cannot become a number or a byte string. `DeError` is translated to `ConfigError` at the entry points: serde's
+`MissingField`/`InvalidType`/`InvalidValue` map to `MissingKey`/`TypeMismatch`/
+`InvalidValue`, and key names are prefixed with the extraction path (`$.db.port` → `key 'srv.db.port'`).
+
+Dependency note: moon.mod therefore pulls in `moonbit-community/serde.mbt@0.3.1` (which itself depends only on
+moonbitlang core, plus parser/async for its derive generator). Users who do not use serde are unaffected: neither core nor json_format depends on it, and existing APIs change in no way.
+
+A complete runnable example (type attributes + generator output + three entry points) is in
+[examples/serde_extract](../../examples/serde_extract/README.md).
+
+## 3. `derive(FromJson)` (experimental)
+
+This is the last path to reach for. The entry points carry `#alert(experimental, ...)`, so using them emits
+`alert_experimental`, and both the API and the strictness probes may change between minor versions. Prefer
+[FromConfig](#1-fromconfig); to keep using this adapter, disable the alert with
+`warnings = "-alert_experimental"` in `moon.pkg`.
+
+The adapter has three entry points:
 
 ```moonbit
 pub fn[T : FromJson] extract(v : Value) -> T raise ConfigError
@@ -57,7 +104,7 @@ Another cost: a `Double` field receiving an integer beyond 2^53 takes an approxi
 
 `Bytes` follows the same idea: the standard library's `ToJson for Bytes` prints printable ASCII as is and everything else as `\xHH`, and `FromJson for Bytes` reads exactly that format (`moonbitlang/core/json/from_json.mbt:309`). Both ends are standard-library implementations, so the library writes no encoder of its own and cannot drift from the standard library.
 
-## 2. Error messages
+### Error messages
 
 `derive(FromJson)` throws `JsonDecodeError((JsonPath, String))`, where `JsonPath`'s `Show` is a JSON Pointer (`/db/port`). `extract` looks that path up in the `Value` and translates it into the same error set as `get_*`:
 
@@ -69,79 +116,3 @@ Another cost: a `Double` field receiving an integer beyond 2^53 takes an approxi
 | Struct declares `Int64` (`expected number in string representation`) | `ParseError("key 'db.port' is a 64-bit integer: declare the struct field as Int64Text or use get_int")` |
 
 The expected type comes from the standard library's message prefix (`String` → `Str`, `Double` → `Float`, `Map` → `Table`), and the actual type is looked up from the `Value`, so names in messages match `get_*`. Variant fields and message text are in [errors.md](../reference/errors.md).
-
-## 3. Default extraction (`FromConfig`): field labels
-
-`FromConfig` is the default extraction path: it reads field by field from a `Value` and does not go through Json. Each field's
-**label is inlined at the call site**:
-
-```moonbit nocheck
-impl @config.FromConfig for Server with fn from_config(get : @config.Getter) -> Server raise @config.ConfigError {
-  {
-    host: get.string("db-host"),          // label renamed: config key decoupled from field name
-    port: get.int("port"),                // native Int64, no Int64Text
-    retry: get.int32_or("retry", 3),      // default value
-    comment: get.opt_string("comment"),   // optional: missing or null both give None
-    tags: get.strings("tags"),            // array
-    db: @jsonfmt.json_field(get, "db"),   // nested struct via derive(FromJson), one-line delegation
-  }
-}
-let srv : Server = config.get_struct("server")
-```
-
-There are three entry points: `Config::get_struct` (take the subtree by key), `Config::get_struct_validated`
-(run `Validate` after extraction) and `Value::to_struct` (the primitive; labels resolve relative to that value).
-
-### Getter semantics
-
-| Method family | Behaviour |
-|---|---|
-| `string` / `bool` / `int` / `int32` / `uint64` / `float` / `float_strict` / `bytes` | Required: missing raises `MissingKey`, wrong type raises `TypeMismatch`, same rules as `get_*` |
-| `*_or` | Missing uses the default; **the key exists but has the wrong type (or is out of range) still errors**, never silently falling back to the default |
-| `opt_*` | Missing or `null` both give `None`; wrong type still errors |
-| `strings` / `ints` / `floats` / `bools` / `structs` | element errors carry the indexed path (`server.tags.1`) |
-| `nested` | the child Getter prefixes the label, nested structs recurse through `from_config` |
-| `value` / `opt_value` | escape hatch: take the raw `Value` and match it yourself |
-
-Strictness matches `get_*`: `int` accepts only integer origins (exact `Int64`; this path reads `Value` directly,
-not through Json, so large integers such as 9007199254740993 do not lose precision); `float` widens integers, `float_strict` does not;
-a string origin never becomes a number or a byte string. No Json round trip, no probes, so it performs better than the derive path.
-
-### Division of labour with the derive path
-
-MoonBit has no reflection, so the field-to-label mapping can only be built at the call site — **even when the label equals the field name,
-it must be written once in the impl**. The default is `FromConfig`: it lives in core, has zero dependencies, shares semantics with `get_*`,
-and does not go through Json. `derive(FromJson)` is an optional adapter, suited to simple structs whose field names all equal the config keys,
-that need no defaults and have no 64-bit fields; it goes through `Value → Json` and the standard library's `FromJson`,
-with strictness simulated by probes rather than guaranteed by construction. If nested structs keep using the derive path, delegate one line per field with
-`json_field` instead of writing each field by hand. The cost of one line per field equals that of a `Validate` impl:
-handwriting in exchange for control.
-
-## 4. Combining with serde (`serde_bridge`)
-
-The [MoonBit community serde framework](https://github.com/moonbit-community/serde.mbt) (`moonbit-community/serde.mbt`) separates "types describing their own shape" from "formats reading and writing the data model": types implement `Deserialize` (by hand or via its derive generator), formats implement `Deserializer`. The `serde_bridge` package provides a `Deserializer` backend over moonfig's `Value`, so any serde type can be extracted straight from config:
-
-```moonbit nocheck
-// type side: existing serde user code, moonfig is unaware of it
-impl @serde.Deserialize for Server with fn deserialize(d) -> Server raise @serde.DeError {
-  d.deserialize_struct_begin("Server", ["db-host", "port"])
-  // ... the struct protocol reads field by field, required closes it
-}
-
-// moonfig side: three entry points
-let srv : Server = @serde_bridge.extract_serde(value)          // whole tree
-let srv : Server = @serde_bridge.extract_serde_from(cfg, "srv") // by key
-db: @serde_bridge.serde_field(get, "db"),                      // FromConfig field-level delegation
-```
-
-Semantics align with serde's own `Value` backend and with moonfig's strictness: integers accept only `Int` nodes
-(range-checked, floats not truncated, strings not parsed), `deserialize_double` widens integers (like `get_float`),
-and a string origin cannot become a number or a byte string. `DeError` is translated to `ConfigError` at the entry points: serde's
-`MissingField`/`InvalidType`/`InvalidValue` map to `MissingKey`/`TypeMismatch`/
-`InvalidValue`, and key names are prefixed with the extraction path (`$.db.port` → `key 'srv.db.port'`).
-
-Dependency note: moon.mod therefore pulls in `moonbit-community/serde.mbt@0.3.1` (which itself depends only on
-moonbitlang core, plus parser/async for its derive generator). Users who do not use serde are unaffected: neither core nor json_format depends on it, and existing APIs change in no way.
-
-A complete runnable example (type attributes + generator output + three entry points) is in
-[examples/serde_extract](../../examples/serde_extract/README.md).

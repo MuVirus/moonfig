@@ -2,8 +2,7 @@
 /// 手写结构体提取的一切都放这里。
 ///
 /// 这是默认的结构体提取路径：每个字段的标签内联在调用点，顺便直接给出原生
-/// `Int64`。`derive(FromJson)` 是可选适配器，字段名必须与配置键一致、没有
-/// 默认值、64 位字段要包 `Int64Text`：
+/// `Int64`，支持改名、缺省值和嵌套。
 ///
 /// 用法（用户侧，示意；编译过的完整例子见 `core/from_config_test.mbt`）：
 ///
@@ -42,14 +41,11 @@
 /// }
 /// ```
 ///
-/// `derive(FromJson)` 适配器适合标签全等于字段名、不需要默认值、没有 64 位
-/// 字段的简单结构；它经过 `Value → Json`，严格性靠探针模拟。需要改名、缺省值、
-/// 嵌套路径或原生 64 位时用这条路径。嵌套结构体若走 derive 路径，字段里用
-/// json_format 的 `json_field` 一行委托，不用逐字段手写。
-///
 /// MoonBit 没有反射，字段和标签的对应关系只能在调用点建立——即使标签
-/// 等于字段名，也要写一遍。这是手写换控制力的代价，和 `Validate` impl
-/// 逐字段写 `prefix.add(...)` 是同一个模式。
+/// 等于字段名，也要写一遍。
+///
+/// 与 `derive(FromJson)`、`serde_bridge` 的取舍见
+/// `docs/guides/choose-extraction.md`；设计依据见 `docs/design/from_config.md`。
 pub(open) trait FromConfig {
   fn from_config(Getter) -> Self raise ConfigError
 }

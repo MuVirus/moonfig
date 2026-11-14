@@ -20,9 +20,10 @@
 | #8 | `String::compare` 先比长度 | 生效 | 无（仅实现） |
 | #9 | 校验 | 生效 | design/validate.md |
 | #10 | 浮点加宽与带来源快照 | 生效 | design/design.md、design/sources.md |
-| #11 | 手写 `FromConfig` 而不是 derive 标签 | 部分被取代（#13 改了默认提取顺序） | design/extract.md、guides/choose-extraction.md |
+| #11 | 手写 `FromConfig` 而不是 derive 标签 | 部分被取代（#13 改了默认提取顺序） | design/from_config.md、design/extract.md、guides/choose-extraction.md |
 | #12 | serde 结合走独立包，不进 core | 生效 | design/extract.md |
-| #13 | 提取路径的默认顺序 | 生效（取代 #11 的默认顺序） | design/extract.md、guides/choose-extraction.md |
+| #13 | 提取路径的默认顺序 | 生效（取代 #11 的默认顺序） | design/from_config.md、design/extract.md、guides/choose-extraction.md |
+| #14 | `derive(FromJson)` 提取标记为实验性 | 生效 | design/extract.md、design/from_config.md、guides/choose-extraction.md |
 
 ## 1. 包名不能和 MoonBit 标准库的包重名
 
@@ -177,7 +178,7 @@
 
 ## 11. 手写 `FromConfig` 而不是 derive 标签
 
-状态：部分被取代（#13 改了默认提取顺序）｜影响：design/extract.md、guides/choose-extraction.md
+状态：部分被取代（#13 改了默认提取顺序）｜影响：design/from_config.md、design/extract.md、guides/choose-extraction.md
 
 > **2026-11 定稿：第二条结构体提取路径是手写 trait + `Getter`，不做 derive 也不做外部生成。**
 >
@@ -222,7 +223,7 @@
 
 ## 13. 提取路径的默认顺序
 
-状态：生效（取代 #11 的默认顺序）｜影响：design/extract.md、guides/choose-extraction.md
+状态：生效（取代 #11 的默认顺序）｜影响：design/from_config.md、design/extract.md、guides/choose-extraction.md
 
 > **2026-11 修订：`FromConfig` 是默认提取路径，`derive(FromJson)` 降为可选适配器。**
 >
@@ -233,3 +234,18 @@
 >   与其余路径不是同一套口径，因此不再作为默认推荐。
 > - derive 路径保留：它对已经实现 `FromJson` 的类型是零样板入口，成本被
 >   `json_format` 包边界隔离。文档不再把它与 `FromConfig` 并列。
+
+## 14. `derive(FromJson)` 提取标记为实验性
+
+状态：生效｜影响：design/extract.md、design/from_config.md、guides/choose-extraction.md
+
+> **2026-11：保留 `derive(FromJson)` 提取，但标记为实验性。**
+>
+> - 这条路径走 `Value → Json → FromJson`，严格性只能靠探针重建：浮点换成 `"NaN"`
+>   拦住截断，字符串换成标记拦住隐式数字解析，`Bytes` 还要反向探测；64 位字段
+>   额外需要 `Int64Text` 包装。
+> - 探针和类型映射的实测见 `core/format/json_format/extract.mbt` 与
+>   `benchmarks/README.md`；规则稳定前可能变化。入口带 `#alert(experimental, ...)`，
+>   用户会看到 `alert_experimental`，可用 `moon.pkg` 里的
+>   `warnings = "-alert_experimental"` 关掉。
+> - 默认路径仍是 `FromConfig`（#13）；实验性标记不移除这条路径。
