@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/core/format/xml_format"
+package "MuVirus/moonfig-xml/xml_format"
 
 import {
   "MuVirus/moonfig/core",

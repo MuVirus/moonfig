@@ -30,11 +30,11 @@
 - `sniff`：只看开头，默认 `false`。
 - `decode_path`：知道路径时先看后缀，默认直接 `decode`。
 
-[`format_detect/`](../../format_detect/) 提供 `Detector`，负责归一化后缀、检查重复声明、按候选顺序做内容判断。它不读文件，也不依赖平台 API。
+[`format_detect/`](../../modules/moonfig/format_detect/) 提供 `Detector`，负责归一化后缀、检查重复声明、按候选顺序做内容判断。它不读文件，也不依赖平台 API。
 
 候选表由调用方给：core 不能反向 import 格式包，格式包也没有运行时自注册。这样只用 JSON 的项目不必被迫链上 YAML、XML 和 CBOR；需要默认列表时，由应用自己 import 并组装。
 
-[`FileSource::auto`](../../file_source/file_source.mbt) 在 `file_source/` 里把路径和已读出的字节交给 `Detector`；普通 `FileSource::new` 仍然直接使用传入的 `Format`。`StringSource` / `BytesSource` 没有路径，把 `Detector` 当普通 `Format` 用即可，只做内容判断。
+[`FileSource::auto`](../../modules/moonfig/file_source/file_source.mbt) 在 `file_source/` 里把路径和已读出的字节交给 `Detector`；普通 `FileSource::new` 仍然直接使用传入的 `Format`。`StringSource` / `BytesSource` 没有路径，把 `Detector` 当普通 `Format` 用即可，只做内容判断。
 
 ## 示例
 

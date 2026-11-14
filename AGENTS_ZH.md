@@ -37,11 +37,21 @@
 - MoonBit 的包按目录组织；每个目录有一个 `moon.pkg`，列出这个包的依赖。每个包有自己的源文件、
   黑盒测试文件（后缀 `_test.mbt`）和白盒测试文件（后缀 `_wbtest.mbt`）。
 
-- 顶层目录有一个 `moon.mod`，记录模块元信息。
+- 每个模块目录有一个 `moon.mod`，记录模块元信息。
 
-- 核心包在 `core/`，格式包在 `core/format/`（一种格式一个目录），文件、环境变量和命令行来源在
-  模块根目录的 `file_source/`、`env_source/`、`cli_source/`。文档放在 `docs/`，
-  见 [`docs/AGENTS.md`](docs/AGENTS.md)。
+- 仓库根是 `moon.work` workspace，本身没有 `moon.mod`。所有模块都在 `modules/`
+  下：`modules/moonfig` 是 `MuVirus/moonfig`，每个适配器一个
+  `modules/moonfig-<name>/`（`-toml`、`-yaml`、`-xml`、`-cbor`、`-serde`）。
+  `examples/`、`benchmarks/` 也是 workspace 成员，但不发布。根目录的
+  `moon check` 和 `moon test` 覆盖所有成员；`moon package`、`moon publish`
+  这类按模块执行的命令要在模块目录里跑（`moon -C modules/moonfig publish`）。
+
+- 在 `modules/moonfig` 里，核心包在 `core/`；不需要第三方解析器的格式包
+  （`json_format`、`ini_format`、`dotenv_format`）在 `core/format/`；文件、
+  环境变量和命令行来源在 `file_source/`、`env_source/`、`cli_source/`。
+  需要解析器的格式是独立模块而不是包：模块的依赖会被它所有 package 共享，
+  进而传到每个使用者。文档在仓库根的 `docs/`，见
+  [`docs/AGENTS.md`](docs/AGENTS.md)。
 
 - 测试遵循 `docs/conventions/testing.md`：公开 API 的示例写在 `///` 文档注释的 ` ```mbt check ` 代码块里，
   私有逻辑放进 `_wbtest.mbt`，公开 API 的行为放进 `_test.mbt`。本项目不用内联测试。

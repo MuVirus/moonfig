@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/core/format/cbor_format"
+package "MuVirus/moonfig-cbor/cbor_format"
 
 import {
   "MuVirus/moonfig/core",

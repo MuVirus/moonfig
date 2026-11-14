@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/core/format/yaml_format"
+package "MuVirus/moonfig-yaml/yaml_format"
 
 import {
   "MuVirus/moonfig/core",

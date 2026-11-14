@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/core/format/toml_format"
+package "MuVirus/moonfig-toml/toml_format"
 
 import {
   "MuVirus/moonfig/core",

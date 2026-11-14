@@ -67,8 +67,12 @@ pub fn Value::from_literal(StringView) -> Value raise ConfigError
 
 ## package 划分与命名
 
+仓库根是 `moon.work` workspace，本身不是模块；所有模块都在 `modules/` 下。下面的 package 路径都相对模块根。
+
 - `core/`：core 包，四个 trait、三个内存实现，以及 `LiveConfig`。
-- `core/format/xxx_format/`：只提供一个 `Format` 类型，例如 `JsonFormat`、`TomlFormat`，不再包一层 `Source`。依赖写在自己的 `moon.pkg` 里，加一种格式只动这个 package。
+- `core/format/xxx_format/`：只提供一个 `Format` 类型，例如 `JsonFormat`、`TomlFormat`，不再包一层 `Source`。
+- `modules/moonfig-<name>/`：凡是需要第三方解析器的格式各成一个模块（`MuVirus/moonfig-toml`、`-yaml`、`-xml`、`-cbor`），`xxx_format` 包放在模块里。模块依赖是该模块所有 package 依赖的并集，解析器只有在另一个模块里才不会进 `MuVirus/moonfig`；加一种格式是加一个模块，不是给 core 加依赖。
+- `modules/moonfig-serde/`：serde 提取后端（`serde_bridge`）。它不是格式：消费 `Value` 而不产出 `Value`，所以既不在 `core/format/`，也不在那四个格式模块里。
 - `file_source/`、`env_source/`、`cli_source/`：`Source` 实现，和 `core/` 平级。
 
 后缀写清包里提供什么：格式包用 `_format`，Source 包用 `_source`。这样也避开和 MoonBit 标准库的包重名（`env`、`json` 都撞过），原因见 [decisions.md](../decisions/decisions.zh.md#1-包名不能和-moonbit-标准库的包重名)。
@@ -77,7 +81,7 @@ pub fn Value::from_literal(StringView) -> Value raise ConfigError
 
 没有硬性标准。解析器成熟、好用、不引入平台依赖，符合 `core/` 的设计约束，就直接用；没有合适的，或者格式简单、自己写更可控，就自己写。
 
-TOML、YAML、XML、CBOR 用第三方解析器；JSON、INI、`.env` 是自己写的。
+TOML、YAML、XML、CBOR 用第三方解析器；JSON、INI、`.env` 是自己写的。每个第三方解析器都在自己的模块里（`modules/moonfig-<name>/`），依赖它需要单独 `moon add`。
 
 ## 来源追踪
 

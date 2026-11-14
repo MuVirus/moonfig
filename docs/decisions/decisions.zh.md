@@ -21,9 +21,10 @@
 | #9 | 校验 | 生效 | design/validate.md |
 | #10 | 浮点加宽与带来源快照 | 生效 | design/design.md、design/sources.md |
 | #11 | 手写 `FromConfig` 而不是 derive 标签 | 部分被取代（#13 改了默认提取顺序） | design/from_config.md、design/extract.md、guides/choose-extraction.md |
-| #12 | serde 结合走独立包，不进 core | 生效 | design/extract.md |
+| #12 | serde 结合走独立包，不进 core | 部分被取代（#15 把它移进独立模块） | design/extract.md |
 | #13 | 提取路径的默认顺序 | 生效（取代 #11 的默认顺序） | design/from_config.md、design/extract.md、guides/choose-extraction.md |
 | #14 | `derive(FromJson)` 提取标记为实验性 | 生效 | design/extract.md、design/from_config.md、guides/choose-extraction.md |
+| #15 | 第三方解析器放进独立模块，不只是独立包 | 生效（取代 #12 的包放置） | design/sources.md、design/extract.md、plan/roadmap.md |
 
 ## 1. 包名不能和 MoonBit 标准库的包重名
 
@@ -200,7 +201,7 @@
 
 ## 12. serde 结合走独立包，不进 core
 
-状态：生效｜影响：design/extract.md
+状态：部分被取代（#15 把 `serde_bridge` 移进独立模块）｜影响：design/extract.md
 
 > **2026-11 定稿：`serde_bridge` 是根包，moonfig core 不依赖 serde。**
 >
@@ -249,3 +250,31 @@
 >   用户会看到 `alert_experimental`，可用 `moon.pkg` 里的
 >   `warnings = "-alert_experimental"` 关掉。
 > - 默认路径仍是 `FromConfig`（#13）；实验性标记不移除这条路径。
+
+## 15. 第三方解析器放进独立模块，不只是独立包
+
+状态：生效（取代 #12 的包放置）｜影响：design/sources.md、design/extract.md、plan/roadmap.md
+
+> **2026-11：TOML、YAML、XML、CBOR 和 serde 移进 `MuVirus/moonfig-*` 模块，
+> 根模块只剩 `moonbitlang/x`。**
+>
+> - MoonBit 的模块依赖是这个模块所有 package 依赖的并集，没有可选依赖或特性
+>   开关。适配器只作为 `MuVirus/moonfig` 下的包时，所有用户都会下载所有解析器，
+>   无论用不用。拆分后 `moon tree` 实测：根模块只解析到 `moonbitlang/x`，
+>   `MuVirus/moonfig-toml` 才拉 `moonbit-community/toml` 和 `bobzhang/lexer`
+>   ——隔离是真的，不是改个包名。
+> - 目录形状照 `Milky2018/wasmoon`：仓库根是纯 `moon.work` workspace，本身不是
+>   模块，所有模块都在 `modules/` 下——`modules/moonfig`（`MuVirus/moonfig`），
+>   每个适配器一个 `modules/moonfig-<name>/`（`-toml`、`-yaml`、`-xml`、
+>   `-cbor`、`-serde`），`examples/`、`benchmarks/` 作为放可运行代码的 workspace
+>   成员。根目录没有模块，成员源码不会混进主模块的发布包，也不需要
+>   `.moonignore`；package 路径相对模块根，把模块挪进 `modules/` 不改变任何 import。
+> - serde 不是格式——它消费 `Value` 而不产出 `Value`——所以 `serde_bridge` 在
+>   `modules/moonfig-serde/`，和四个格式模块平级，不放在它们里面。根 README 仍
+>   留在仓库根做 GitHub 首页；主模块另外带自己的 `README.mbt.md` 供 mooncakes
+>   页面使用。
+> - 代价：import 路径变了。`MuVirus/moonfig/core/format/toml_format` 变成
+>   `MuVirus/moonfig-toml/toml_format`（yaml、xml、cbor 同理），
+>   `MuVirus/moonfig/serde_bridge` 变成 `MuVirus/moonfig-serde/serde_bridge`，
+>   用户需要 `moon add` 对应模块。CI 对 `examples/serde_extract` 跑 serde
+>   生成器的路径不变。

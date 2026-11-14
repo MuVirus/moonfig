@@ -25,15 +25,16 @@
 
 | 代码 | 先读 |
 |---|---|
-| `core/` | [design.md](design/design.zh.md) |
-| `core/format/*_format/` | [sources.md](design/sources.zh.md)、[format-detect.md](design/format-detect.zh.md) |
-| `file_source/`、`env_source/`、`cli_source/` | [sources.md](design/sources.zh.md)、[cli-args.md](design/cli-args.zh.md) |
-| `format_detect/` | [format-detect.md](design/format-detect.zh.md) |
-| `hot_reload/` | [hot-reload.md](design/hot-reload.zh.md) |
-| `FromConfig`、`core/from_config.mbt` | [from_config.md](design/from_config.zh.md) |
-| `serde_bridge/`、`derive(FromJson)` | [extract.md](design/extract.zh.md) |
+| `modules/moonfig/core/` | [design.md](design/design.zh.md) |
+| `modules/moonfig/core/format/*_format/` | [sources.md](design/sources.zh.md)、[format-detect.md](design/format-detect.zh.md) |
+| `modules/moonfig-toml/`、`modules/moonfig-yaml/`、`modules/moonfig-xml/`、`modules/moonfig-cbor/` | [sources.md](design/sources.zh.md) |
+| `modules/moonfig/file_source/`、`env_source/`、`cli_source/` | [sources.md](design/sources.zh.md)、[cli-args.md](design/cli-args.zh.md) |
+| `modules/moonfig/format_detect/` | [format-detect.md](design/format-detect.zh.md) |
+| `modules/moonfig/hot_reload/` | [hot-reload.md](design/hot-reload.zh.md) |
+| `FromConfig`、`modules/moonfig/core/from_config.mbt` | [from_config.md](design/from_config.zh.md) |
+| `modules/moonfig-serde/serde_bridge/`、`derive(FromJson)` | [extract.md](design/extract.zh.md) |
 | 校验 | [validate.md](design/validate.zh.md) |
-| `core/error.mbt`、错误消息 | [errors.md](reference/errors.zh.md) |
+| `modules/moonfig/core/error.mbt`、错误消息 | [errors.md](reference/errors.zh.md) |
 | `examples/` | [examples/README.md](../examples/README.md) |
 | `scripts/` | [conventions/docs.zh.md](conventions/docs.zh.md) |
 

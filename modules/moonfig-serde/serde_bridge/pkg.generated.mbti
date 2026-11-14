@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/serde_bridge"
+package "MuVirus/moonfig-serde/serde_bridge"
 
 import {
   "MuVirus/moonfig/core",

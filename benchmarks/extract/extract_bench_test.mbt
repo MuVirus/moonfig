@@ -115,7 +115,7 @@ fn extract_hand(cfg : @config.Config) -> HandApp {
 }
 
 ///|
-fn extract_serde(cfg : @config.Config) -> @benchmarks.SerdeApp {
+fn extract_serde(cfg : @config.Config) -> @extract.SerdeApp {
   @serde_bridge.extract_serde_from(cfg, "app") catch {
     error => abort("serde extraction failed: \{error}")
   }
@@ -142,7 +142,7 @@ fn checksum_hand(app : HandApp) -> Int32 {
 }
 
 ///|
-fn checksum_serde(app : @benchmarks.SerdeApp) -> Int32 {
+fn checksum_serde(app : @extract.SerdeApp) -> Int32 {
   app.name.length() +
   app.retries +
   app.tags.length() +

@@ -11,7 +11,7 @@
 
 name = "MuVirus/moonfig"
 
-version = "0.1.11"
+version = "0.2.0"
 
 readme = "README.mbt.md"
 
@@ -35,13 +35,8 @@ keywords = [
 
 preferred_target = "native"
 
-description = "MoonBit 原生配置库：一处声明，多来源汇入。"
+description = "A native configuration library for MoonBit: declare once, gather from many sources."
 
 import {
-  "Milky2018/xml@0.6.1",
-  "moonbit-community/toml@0.5.0",
-  "moonbit-community/yaml@0.0.8",
-  "2515050242/cbor@0.1.2",
   "moonbitlang/x@0.5.5",
-  "moonbit-community/serde.mbt@0.3.1",
 }

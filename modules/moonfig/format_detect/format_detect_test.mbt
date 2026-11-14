@@ -13,8 +13,33 @@ using @config {
 using @format_detect {type Detector}
 
 ///|
+/// 一个自带后缀、也参与内容判断的假格式。
+///
+/// 检测逻辑不该依赖真实解析器：这里只用它区分「后缀命中」和「内容命中」，
+/// 所以解码结果是一张固定的表。
+struct StubFormat {}
+
+///|
+impl @config.Format for StubFormat with fn decode(_ : StubFormat, _ : Bytes) -> Value raise ConfigError {
+  Value::table({ "key": Value::str("stub") })
+}
+
+///|
+impl @config.Format for StubFormat with fn suffixes(_ : StubFormat) -> Array[
+  String,
+] {
+  ["stub"]
+}
+
+///|
+impl @config.Format for StubFormat with fn sniff(_ : StubFormat, bytes : Bytes) -> Bool {
+  let text = @utf8.decode(bytes) catch { _ => return false }
+  text.has_prefix("stub:")
+}
+
+///|
 fn detector() -> Detector raise ConfigError {
-  Detector::new([@json_format.JsonFormat::new(), @toml_format.TomlFormat::new()])
+  Detector::new([@json_format.JsonFormat::new(), StubFormat::{ }])
 }
 
 ///|
@@ -23,44 +48,17 @@ fn config_of(value : Value) -> Config raise ConfigError {
 }
 
 ///|
-/// 后缀认识时直接走后缀，不看内容
+/// 后缀认识时直接走后缀，大小写不敏感，也不看内容
 test "detector uses a known suffix first" {
-  let cfg = Config::new()
-    .add(StringSource::new("db = { port = 5432 }", detector()))
-    .build()
-  assert_eq(cfg.get_int("db.port"), 5432L)
-}
-
-///|
-/// 后缀大小写不敏感
-test "detector normalizes suffix case" {
-  let bytes = @utf8.encode("{\"db\": {\"port\": 5432}}")
-  let value = detector().decode_path("APP.JSON", bytes)
-  assert_eq(config_of(value).get_int("db.port"), 5432L)
-}
-
-///|
-/// 没有后缀时按内容猜
-test "detector sniffs content when there is no suffix" {
-  let bytes = @utf8.encode("{\"db\": {\"port\": 5432}}")
-  let value = detector().decode_path("app", bytes)
-  assert_eq(config_of(value).get_int("db.port"), 5432L)
-}
-
-///|
-/// 后缀不认识时也按内容猜
-test "detector sniffs content when the suffix is unknown" {
-  let bytes = @utf8.encode("{\"db\": {\"port\": 5432}}")
-  let value = detector().decode_path("app.conf", bytes)
-  assert_eq(config_of(value).get_int("db.port"), 5432L)
+  let value = detector().decode_path("APP.STUB", @utf8.encode("{\"a\": 1}"))
+  assert_eq(config_of(value).get_string("key"), "stub")
 }
 
 ///|
 /// 后缀认识但内容写坏了：直接报错，不偷偷换解析器
 test "detector does not fall back after a known suffix fails" {
-  let bytes = @utf8.encode("db = { port = 5432 }")
   let error = try {
-    ignore(detector().decode_path("app.json", bytes))
+    ignore(detector().decode_path("app.json", @utf8.encode("stub: 1")))
     None
   } catch {
     e => Some(e)
@@ -69,15 +67,30 @@ test "detector does not fall back after a known suffix fails" {
 }
 
 ///|
+/// 没有后缀时按内容猜
+test "detector sniffs content when there is no suffix" {
+  let cfg = Config::new().add(StringSource::new("stub: 1", detector())).build()
+  assert_eq(cfg.get_string("key"), "stub")
+}
+
+///|
+/// 后缀不认识时也按内容猜
+test "detector sniffs content when the suffix is unknown" {
+  let value = detector().decode_path("app.conf", @utf8.encode("stub: 1"))
+  assert_eq(config_of(value).get_string("key"), "stub")
+}
+
+///|
 /// 后缀和内容都不认识：报 UnknownFormat，并列出候选后缀
 test "detector reports UnknownFormat with supported suffixes" {
+  let detector = Detector::new([@json_format.JsonFormat::new()])
   let message = try {
-    ignore(detector().decode_path("app.conf", @utf8.encode("plain text")))
+    ignore(detector.decode_path("app.conf", @utf8.encode("plain text")))
     "no error"
   } catch {
     ConfigError::UnknownFormat(name, suffixes) => {
       assert_eq(name, "app.conf")
-      assert_eq(suffixes, ["json", "toml"])
+      assert_eq(suffixes, ["json"])
       "cannot detect"
     }
     e => e.to_string()
@@ -141,14 +154,4 @@ test "detector candidate order is the priority" {
   )
   assert_eq(config_of(first).get_string("winner"), "first")
   assert_eq(config_of(second).get_string("winner"), "second")
-}
-
-///|
-test "yaml format declares its suffixes" {
-  let detector = Detector::new([@yaml_format.YamlFormat::new()])
-  assert_eq(detector.supported_suffixes(), ["yaml", "yml"])
-  let cfg = Config::new()
-    .add(StringSource::new("db:\n  port: 5432\n", detector))
-    .build()
-  assert_eq(cfg.get_int("db.port"), 5432L)
 }

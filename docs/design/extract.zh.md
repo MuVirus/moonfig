@@ -40,9 +40,9 @@ db: @serde_bridge.serde_field(get, "db"),                      // FromConfig 字
 `MissingField`/`InvalidType`/`InvalidValue` 分别对应 `MissingKey`/`TypeMismatch`/
 `InvalidValue`，键名接上提取前缀（`$.db.port` → `key 'srv.db.port'`）。
 
-依赖说明：moon.mod 因此引入 `moonbit-community/serde.mbt@0.3.1`（其自身只依赖
+依赖说明：`serde_bridge` 在独立模块 `MuVirus/moonfig-serde` 里，它引入 `moonbit-community/serde.mbt@0.3.1`（其自身只依赖
 moonbitlang core，另有 parser/async 供它的 derive 生成器使用）。不使用 serde 的用户
-不受影响：core 与 json_format 都不依赖它，现有 API 零变化。
+不受影响：根模块 `MuVirus/moonfig` 既不依赖它，也不依赖 serde 生成器，现有 API 零变化。
 
 可运行的完整示例（类型属性 + 生成器产物 + 三个入口）见
 [examples/serde_extract](../../examples/serde_extract/README.md)。

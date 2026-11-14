@@ -48,12 +48,12 @@ README 的路线图表是公开摘要，状态和条目与本文保持同步。
 **方向**：把各种格式的配置读成同一份 `Value`。格式之间可以自由替换，声明不用改。
 
 - [x] JSON 文本（`core/format/json_format/` 包）
-- [x] TOML（`core/format/toml_format/` 包，依赖 `moonbit-community/toml`）
-- [x] YAML（`core/format/yaml_format/` 包，依赖 `moonbit-community/yaml`）
+- [x] TOML（`MuVirus/moonfig-toml` 模块，`toml_format/` 包，依赖 `moonbit-community/toml`）
+- [x] YAML（`MuVirus/moonfig-yaml` 模块，`yaml_format/` 包，依赖 `moonbit-community/yaml`）
 - [x] `.env` 文本（`core/format/dotenv_format/` 包）
 - [x] INI（`core/format/ini_format/` 包）
-- [x] XML（`core/format/xml_format/` 包，依赖 `Milky2018/xml`）
-- [x] CBOR（`core/format/cbor_format/` 包，依赖 `2515050242/cbor`）
+- [x] XML（`MuVirus/moonfig-xml` 模块，`xml_format/` 包，依赖 `Milky2018/xml`）
+- [x] CBOR（`MuVirus/moonfig-cbor` 模块，`cbor_format/` 包，依赖 `2515050242/cbor`）
 
 每加一种格式只做一件事：格式 → `Value`。合并、取值、校验都复用 `core/`，不为格式写第二套逻辑。
 
@@ -61,7 +61,7 @@ README 的路线图表是公开摘要，状态和条目与本文保持同步。
 
 **CBOR 是二进制格式，体积小，MCU 上常见。** 它也是检验 `Value` 表示能力的好例子——而这个检验的结果是：`Value` 原来少了一个形状。CBOR 有字节串，`Value` 原来没地方放它，所以 `ValueKind` 现在多了一个 `Bytes` 分支，`get_bytes` 把它原样取出来。其余的部分一一对得上：整数、字符串、数组、映射都不用特例。
 
-**代价**：YAML、TOML、XML 和 CBOR 都依赖第三方解析器（`moonbit-community/yaml`、`moonbit-community/toml`、`Milky2018/xml`、`2515050242/cbor`），所以每种格式单独一个包，`moon.pkg` 写各自的 `import`，`core/` 和已完成的 `json_format`、`ini_format`、`dotenv_format` 不受影响。
+**代价**：YAML、TOML、XML 和 CBOR 都依赖第三方解析器（`moonbit-community/yaml`、`moonbit-community/toml`、`Milky2018/xml`、`2515050242/cbor`）。模块依赖是该模块所有 package 依赖的并集，只分包不分模块的话，所有用户仍然会下载所有解析器。所以这四种格式各自成模块（仓库里在 `modules/moonfig-<name>/`，mooncakes 上是 `MuVirus/moonfig-<name>`），`moon add MuVirus/moonfig` 只依赖 `moonbitlang/x`。
 
 **JSON、INI 和 `.env` 都是自己写的解析器，没有第三方依赖。** 三者都只用 MoonBit 标准库的包：JSON 走 `@json`，INI 和 `.env` 走 `@string` 里的 `parse_int64` / `parse_double`。INI 的类型猜法写在包的文档注释里：段落变层级、引号强制字符串、`;` 和 `#` 只在整行开头算注释；`.env` 的规则也写在包文档里：`export` 前缀可选、键名里的 `.` 变层级、单引号原样保留、双引号认转义、`#` 前面有空白才算行尾注释、不做变量展开。
 

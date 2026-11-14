@@ -19,6 +19,12 @@ fn yaml(text : String) -> StringSource {
 }
 
 ///|
+/// `.yml` 是 `.yaml` 的别名，两个后缀都要报出来
+test "yaml format declares its suffixes" {
+  assert_eq(@yaml_format.YamlFormat::new().suffixes(), ["yaml", "yml"])
+}
+
+///|
 /// 嵌套map、序列和各种标量
 test "yaml reads nested mappings, sequences and scalars" {
   let cfg = Config::new()

@@ -54,8 +54,8 @@
 
 | 东西 | 位置 | 原因 |
 |---|---|---|
-| `LiveConfig`、`build_live`、`reload`、`poll` | [`core/live.mbt`](../../core/live.mbt) | 要碰 `Config` 私有字段；读文件走 `Locator`，不直接调平台 API |
-| `Watcher`、`watch` | [`hot_reload/`](../../hot_reload/) | 回调与轮询句柄，不绑定运行时 |
+| `LiveConfig`、`build_live`、`reload`、`poll` | [`core/live.mbt`](../../modules/moonfig/core/live.mbt) | 要碰 `Config` 私有字段；读文件走 `Locator`，不直接调平台 API |
+| `Watcher`、`watch` | [`hot_reload/`](../../modules/moonfig/hot_reload/) | 回调与轮询句柄，不绑定运行时 |
 | OS 文件事件 | 未来的 native 子包 | inotify / kqueue / ReadDirectoryChangesW 要平台 FFI |
 
 `core/` 保持无平台代码；`hot_reload/` 只依赖 `core` 和标准库，所有 target 都能编译。

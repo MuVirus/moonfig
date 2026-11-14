@@ -59,6 +59,10 @@ moonfig 是一个综合性配置库，面向多来源配置：把常见配置格
 moon add MuVirus/moonfig
 ```
 
+TOML、YAML、XML、CBOR 和 serde 各自是独立模块，只读 JSON 的项目不会把它们的
+解析器拉进来。哪种格式该加哪个模块，见
+[模块 README](modules/moonfig/README_ZH.md#可选适配器)。
+
 然后在 `moon.pkg` 里按需引入包：
 
 ```moonbit
@@ -68,7 +72,7 @@ import {
 }
 ```
 
-从源码运行：
+从源码运行（库本身在 `modules/moonfig/`）：
 
 ```sh
 git clone https://github.com/MuVirus/moonfig.git

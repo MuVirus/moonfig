@@ -50,12 +50,12 @@ After steps 1–3 the library is usable (only `MemorySource` exists for now). St
 **Direction**: Read configuration in every format into the same `Value`. Formats can be swapped freely without changing declarations.
 
 - [x] JSON text (`core/format/json_format/` package)
-- [x] TOML (`core/format/toml_format/` package, depends on `moonbit-community/toml`)
-- [x] YAML (`core/format/yaml_format/` package, depends on `moonbit-community/yaml`)
+- [x] TOML (`MuVirus/moonfig-toml` module, `toml_format/` package, depends on `moonbit-community/toml`)
+- [x] YAML (`MuVirus/moonfig-yaml` module, `yaml_format/` package, depends on `moonbit-community/yaml`)
 - [x] `.env` text (`core/format/dotenv_format/` package)
 - [x] INI (`core/format/ini_format/` package)
-- [x] XML (`core/format/xml_format/` package, depends on `Milky2018/xml`)
-- [x] CBOR (`core/format/cbor_format/` package, depends on `2515050242/cbor`)
+- [x] XML (`MuVirus/moonfig-xml` module, `xml_format/` package, depends on `Milky2018/xml`)
+- [x] CBOR (`MuVirus/moonfig-cbor` module, `cbor_format/` package, depends on `2515050242/cbor`)
 
 Each new format does one thing only: format → `Value`. Merging, reading and validation all reuse `core/`, with no second implementation per format.
 
@@ -63,7 +63,7 @@ Each new format does one thing only: format → `Value`. Merging, reading and va
 
 **CBOR is a binary format, small in size, common on MCUs.** It is also a good test of `Value`'s representational power — and the result of that test was that `Value` was missing one shape. CBOR has byte strings, and `Value` had nowhere to put them, so `ValueKind` now has a `Bytes` branch, and `get_bytes` extracts it as-is. Everything else lines up one to one: integers, strings, arrays and maps need no special case.
 
-**Cost**: YAML, TOML, XML and CBOR all depend on third-party parsers (`moonbit-community/yaml`, `moonbit-community/toml`, `Milky2018/xml`, `2515050242/cbor`), so each format gets its own package with its own `import` in `moon.pkg`, and `core/` plus the finished `json_format`, `ini_format` and `dotenv_format` are unaffected.
+**Cost**: YAML, TOML, XML and CBOR all depend on third-party parsers (`moonbit-community/yaml`, `moonbit-community/toml`, `Milky2018/xml`, `2515050242/cbor`). A module's dependencies are the union of what all its packages import, so a package boundary alone would still make every user download every parser. Each of the four therefore ships as its own module (`modules/moonfig-<name>/` in the repository, `MuVirus/moonfig-<name>` on mooncakes), and `moon add MuVirus/moonfig` stays a dependency on `moonbitlang/x` only.
 
 **JSON, INI and `.env` all use hand-written parsers with no third-party dependency.** All three only use MoonBit standard library packages: JSON goes through `@json`, INI and `.env` go through `parse_int64` / `parse_double` in `@string`. INI's type guessing is documented in the package doc comment: sections become levels, quotes force a string, and `;` and `#` only count as comments at the start of a line; `.env`'s rules are in the package docs too: the `export` prefix is optional, `.` in key names becomes a level, single quotes are kept as-is, double quotes interpret escapes, `#` only starts a trailing comment when preceded by whitespace, and there is no variable expansion.
 

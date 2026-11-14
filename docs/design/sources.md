@@ -67,8 +67,12 @@ The three implementations in `core/` are pure computation, touch no IO, and comp
 
 ## Package layout and naming
 
+The repository root is a `moon.work` workspace with no module of its own; every module lives under `modules/`. The package paths below are relative to a module root.
+
 - `core/`: the core package, four traits, three in-memory implementations, and `LiveConfig`.
-- `core/format/xxx_format/`: provides only a `Format` type, such as `JsonFormat` or `TomlFormat`, with no extra `Source` wrapper. Dependencies go in its own `moon.pkg`; adding a format touches only this package.
+- `core/format/xxx_format/`: provides only a `Format` type, such as `JsonFormat` or `TomlFormat`, with no extra `Source` wrapper.
+- `modules/moonfig-<name>/`: one module per format that needs a third-party parser (`MuVirus/moonfig-toml`, `-yaml`, `-xml`, `-cbor`), with the `xxx_format` package inside. Module dependencies are the union of what the module's packages import, so a parser only stays out of `MuVirus/moonfig` if it lives in another module; adding a format adds a module, not a dependency of the core.
+- `modules/moonfig-serde/`: the serde extraction backend (`serde_bridge`). It is not a format: it consumes `Value` instead of producing it, so it stays outside both `core/format/` and the four format modules.
 - `file_source/`, `env_source/`, `cli_source/`: `Source` implementations, at the same level as `core/`.
 
 The suffix says what the package provides: format packages use `_format`, Source packages use `_source`. This also avoids clashing with MoonBit standard library package names (`env` and `json` both clashed before); the reason is in [decisions.md](../decisions/decisions.md#1-package-names-cannot-collide-with-moonbit-standard-library-package-names).
@@ -77,7 +81,7 @@ The suffix says what the package provides: format packages use `_format`, Source
 
 There is no hard rule. If a parser is mature, pleasant to use, brings no platform dependency and fits the `core/` constraints, use it directly; otherwise, or when the format is simple and writing it yourself gives more control, write it yourself.
 
-TOML, YAML, XML and CBOR use third-party parsers; JSON, INI and `.env` are written in-house.
+TOML, YAML, XML and CBOR use third-party parsers; JSON, INI and `.env` are written in-house. Each third-party parser ships in its own module (`modules/moonfig-<name>/`), so depending on it is a separate `moon add`.
 
 ## Origin tracking
 

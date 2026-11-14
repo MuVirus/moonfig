@@ -30,11 +30,11 @@ Using a full parse to judge format would mix "the content is broken" with "the f
 - `sniff`: looks only at the beginning, `false` by default.
 - `decode_path`: checks the suffix first when the path is known, otherwise just `decode`.
 
-[`format_detect/`](../../format_detect/) provides `Detector`, which normalizes suffixes, checks duplicate declarations and does content detection in candidate order. It reads no files and depends on no platform API.
+[`format_detect/`](../../modules/moonfig/format_detect/) provides `Detector`, which normalizes suffixes, checks duplicate declarations and does content detection in candidate order. It reads no files and depends on no platform API.
 
 The caller supplies the candidate table: core cannot import format packages in reverse, and format packages have no runtime self-registration. So a project using only JSON is not forced to link YAML, XML and CBOR; when a default list is needed, the application imports and assembles it.
 
-[`FileSource::auto`](../../file_source/file_source.mbt) in `file_source/` hands the path and the already-read bytes to `Detector`; ordinary `FileSource::new` still uses the given `Format` directly. `StringSource` / `BytesSource` have no path, so just use `Detector` as a normal `Format`; it only does content detection.
+[`FileSource::auto`](../../modules/moonfig/file_source/file_source.mbt) in `file_source/` hands the path and the already-read bytes to `Detector`; ordinary `FileSource::new` still uses the given `Format` directly. `StringSource` / `BytesSource` have no path, so just use `Detector` as a normal `Format`; it only does content detection.
 
 ## Example
 

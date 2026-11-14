@@ -24,15 +24,16 @@ The extended explanation and trade-offs are in `design/`; to find docs by code, 
 
 | Code | Read first |
 |---|---|
-| `core/` | [design.md](design/design.md) |
-| `core/format/*_format/` | [sources.md](design/sources.md), [format-detect.md](design/format-detect.md) |
-| `file_source/`, `env_source/`, `cli_source/` | [sources.md](design/sources.md), [cli-args.md](design/cli-args.md) |
-| `format_detect/` | [format-detect.md](design/format-detect.md) |
-| `hot_reload/` | [hot-reload.md](design/hot-reload.md) |
-| `FromConfig`, `core/from_config.mbt` | [from_config.md](design/from_config.md) |
-| `serde_bridge/`, `derive(FromJson)` | [extract.md](design/extract.md) |
+| `modules/moonfig/core/` | [design.md](design/design.md) |
+| `modules/moonfig/core/format/*_format/` | [sources.md](design/sources.md), [format-detect.md](design/format-detect.md) |
+| `modules/moonfig-toml/`, `modules/moonfig-yaml/`, `modules/moonfig-xml/`, `modules/moonfig-cbor/` | [sources.md](design/sources.md) |
+| `modules/moonfig/file_source/`, `env_source/`, `cli_source/` | [sources.md](design/sources.md), [cli-args.md](design/cli-args.md) |
+| `modules/moonfig/format_detect/` | [format-detect.md](design/format-detect.md) |
+| `modules/moonfig/hot_reload/` | [hot-reload.md](design/hot-reload.md) |
+| `FromConfig`, `modules/moonfig/core/from_config.mbt` | [from_config.md](design/from_config.md) |
+| `modules/moonfig-serde/serde_bridge/`, `derive(FromJson)` | [extract.md](design/extract.md) |
 | Validation | [validate.md](design/validate.md) |
-| `core/error.mbt`, error messages | [errors.md](reference/errors.md) |
+| `modules/moonfig/core/error.mbt`, error messages | [errors.md](reference/errors.md) |
 | `examples/` | [examples/README.md](../examples/README.md) |
 | `scripts/` | [conventions/docs.md](conventions/docs.md) |
 

@@ -54,8 +54,8 @@ The library builds in no timer: putting one in would mean choosing an async runt
 
 | Thing | Location | Reason |
 |---|---|---|
-| `LiveConfig`, `build_live`, `reload`, `poll` | [`core/live.mbt`](../../core/live.mbt) | needs `Config`'s private fields; file reads go through `Locator`, never platform APIs directly |
-| `Watcher`, `watch` | [`hot_reload/`](../../hot_reload/) | callback and polling handle, bound to no runtime |
+| `LiveConfig`, `build_live`, `reload`, `poll` | [`core/live.mbt`](../../modules/moonfig/core/live.mbt) | needs `Config`'s private fields; file reads go through `Locator`, never platform APIs directly |
+| `Watcher`, `watch` | [`hot_reload/`](../../modules/moonfig/hot_reload/) | callback and polling handle, bound to no runtime |
 | OS file events | a future native subpackage | inotify / kqueue / ReadDirectoryChangesW need platform FFI |
 
 `core/` stays free of platform code; `hot_reload/` depends only on `core` and the standard library and compiles on every target.

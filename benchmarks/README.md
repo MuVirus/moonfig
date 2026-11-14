@@ -43,6 +43,6 @@ Windows / native release / MoonBit 0.1.20261104，三次运行的中位数：
 
 ## 文件
 
-- [`extract_bench_test.mbt`](extract_bench_test.mbt) —— 三套结构体和 6 个 benchmark
-- [`serde_types.mbt`](serde_types.mbt) —— serde 类型；`serde_types_derive.mbt` 由生成器产出
-- [`moon.pkg`](moon.pkg) —— 依赖与 `dev_build` 生成规则
+- [`extract_bench_test.mbt`](extract/extract_bench_test.mbt) —— 三套结构体和 6 个 benchmark
+- [`serde_types.mbt`](extract/serde_types.mbt) —— serde 类型；`serde_types_derive.mbt` 由生成器产出
+- [`moon.pkg`](extract/moon.pkg) —— 依赖与 `dev_build` 生成规则

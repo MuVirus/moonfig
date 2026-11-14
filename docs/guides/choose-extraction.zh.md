@@ -14,7 +14,7 @@
 - `FromConfig`：默认提取路径，只依赖 `core`；`from_config` 收到一个 `Getter`，按标签
   读字段
 - serde（`moonbit-community/serde.mbt`）：类型有 `Deserialize`（手写或
-  `#serde.derive(Deserialize)`），依赖 `serde_bridge`；它把 `Value` 接到 serde 后端
+  `#serde.derive(Deserialize)`），依赖 `MuVirus/moonfig-serde` 模块；它把 `Value` 接到 serde 后端
 - `derive(FromJson)`：由 `moonbitlang/core/json` 生成实现；类型加
   `#derive(@json.FromJson)`，再加一行 `pub extend T with @json.FromJson::{from_json}`；
   依赖 `json_format`。这条路径是实验性的：使用时会报 `alert_experimental`，API 和严格性探针

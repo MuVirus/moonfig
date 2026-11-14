@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/examples/validate"
+package "MuVirus/moonfig-examples/validate"
 
 import {
   "moonbitlang/core/json",

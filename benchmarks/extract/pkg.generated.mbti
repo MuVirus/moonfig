@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/benchmarks"
+package "MuVirus/moonfig-benchmarks/extract"
 
 import {
   "moonbit-community/serde.mbt",

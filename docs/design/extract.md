@@ -40,8 +40,8 @@ and a string origin cannot become a number or a byte string. `DeError` is transl
 `MissingField`/`InvalidType`/`InvalidValue` map to `MissingKey`/`TypeMismatch`/
 `InvalidValue`, and key names are prefixed with the extraction path (`$.db.port` → `key 'srv.db.port'`).
 
-Dependency note: moon.mod therefore pulls in `moonbit-community/serde.mbt@0.3.1` (which itself depends only on
-moonbitlang core, plus parser/async for its derive generator). Users who do not use serde are unaffected: neither core nor json_format depends on it, and existing APIs change in no way.
+Dependency note: `serde_bridge` lives in its own module, `MuVirus/moonfig-serde`, which pulls in `moonbit-community/serde.mbt@0.3.1` (which itself depends only on
+moonbitlang core, plus parser/async for its derive generator). Users who do not use serde are unaffected: the root `MuVirus/moonfig` module neither depends on it nor on the serde generator, and existing APIs change in no way.
 
 A complete runnable example (type attributes + generator output + three entry points) is in
 [examples/serde_extract](../../examples/serde_extract/README.md).

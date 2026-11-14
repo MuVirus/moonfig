@@ -49,13 +49,25 @@ a `Doc impact:` line. Error message text lives only in
   blackbox test files (ending in `_test.mbt`) and whitebox test files (ending in
   `_wbtest.mbt`).
 
-- In the toplevel directory, there is a `moon.mod` file listing module
-  metadata.
+- Each module directory has a `moon.mod` file listing module metadata.
 
-- The core package sits in `core/`; format packages sit in `core/format/`, one
-  directory per format; the file, environment and command-line sources sit in
-  `file_source/`, `env_source/` and `cli_source/` at the module root. The
-  documents live in `docs/`; see [`docs/AGENTS.md`](docs/AGENTS.md).
+- The repository root is a `moon.work` workspace and has no `moon.mod` of its
+  own. Every module lives under `modules/`: `modules/moonfig` is
+  `MuVirus/moonfig`, and each adapter gets `modules/moonfig-<name>/`
+  (`-toml`, `-yaml`, `-xml`, `-cbor`, `-serde`). `examples/` and `benchmarks/`
+  are workspace members too, but are not published. `moon check` and
+  `moon test` at the root cover every member; member-scoped commands such as
+  `moon package` and `moon publish` run from the module directory
+  (`moon -C modules/moonfig publish`).
+
+- Inside `modules/moonfig`, the core package sits in `core/`; the format
+  packages that need no third-party parser (`json_format`, `ini_format`,
+  `dotenv_format`) sit in `core/format/`; the file, environment and
+  command-line sources sit in `file_source/`, `env_source/` and `cli_source/`.
+  Formats that do need a parser are separate modules, not packages: a module's
+  dependencies are shared by every package in it, and from there reach every
+  consumer. The documents live at the repository root in `docs/`; see
+  [`docs/AGENTS.md`](docs/AGENTS.md).
 
 - Tests follow `docs/conventions/testing.md`: examples for public API live in `///` doc
   comments as ` ```mbt check ` blocks, private logic goes into `_wbtest.mbt`,

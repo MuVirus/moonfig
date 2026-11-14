@@ -25,9 +25,10 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #9 | Validation | active | design/validate.md |
 | #10 | Float widening and snapshots with origins | active | design/design.md, design/sources.md |
 | #11 | Hand-written `FromConfig` instead of derive labels | partially superseded (#13 changes the default extraction order) | design/from_config.md, design/extract.md, guides/choose-extraction.md |
-| #12 | serde integration in its own package, not in core | active | design/extract.md |
+| #12 | serde integration in its own package, not in core | partially superseded (#15 moves `serde_bridge` into its own module) | design/extract.md |
 | #13 | Default order of extraction paths | active (supersedes #11's default order) | design/from_config.md, design/extract.md, guides/choose-extraction.md |
 | #14 | `derive(FromJson)` extraction is experimental | active | design/extract.md, design/from_config.md, guides/choose-extraction.md |
+| #15 | Third-party parsers live in separate modules, not packages | active (supersedes #12's package placement) | design/sources.md, design/extract.md, plan/roadmap.md |
 
 ## 1. Package names cannot collide with MoonBit standard library package names
 
@@ -326,7 +327,7 @@ Status: partially superseded (#13 changes the default extraction order) | Affect
 
 ## 12. serde integration in its own package, not in core
 
-Status: active | Affects: design/extract.md
+Status: partially superseded (#15 moves `serde_bridge` into its own module) | Affects: design/extract.md
 
 > **Finalized 2026-11: `serde_bridge` is a root package, and moonfig core does
 > not depend on serde.**
@@ -389,3 +390,37 @@ Status: active | Affects: design/extract.md, design/from_config.md, guides/choos
 >   disable it with `warnings = "-alert_experimental"` in `moon.pkg`.
 > - The default stays `FromConfig` (#13); the experimental label does not remove
 >   the path.
+
+## 15. Third-party parsers live in separate modules, not packages
+
+Status: active (supersedes #12's package placement) | Affects: design/sources.md, design/extract.md, plan/roadmap.md
+
+> **2026-11: TOML, YAML, XML, CBOR and serde move to `MuVirus/moonfig-*`
+> modules; the root module keeps only `moonbitlang/x`.**
+>
+> - A MoonBit module's dependencies are the union of the imports of all its
+>   packages; there are no optional or feature-gated dependencies. Keeping the
+>   adapters as packages under `MuVirus/moonfig` therefore made every consumer
+>   download every parser, however little of it they used. Measured with
+>   `moon tree` after the split: the root module resolves to `moonbitlang/x`
+>   only, while `MuVirus/moonfig-toml` pulls `moonbit-community/toml` and
+>   `bobzhang/lexer` — the isolation is real, not a package rename.
+> - Layout follows `Milky2018/wasmoon`: the repository root is a pure
+>   `moon.work` workspace with no module of its own, and every module lives in
+>   `modules/` — `modules/moonfig` (`MuVirus/moonfig`), one
+>   `modules/moonfig-<name>/` per adapter (`-toml`, `-yaml`, `-xml`, `-cbor`,
+>   `-serde`), plus `examples/` and `benchmarks/` as workspace members for
+>   runnable code. Because there is no root module, no member source can leak
+>   into the main module's tarball, and no `.moonignore` is needed; package paths
+>   are module-relative, so moving a module into `modules/` changes no import.
+> - serde is not a format — it consumes `Value` instead of producing it — so
+>   `serde_bridge` sits in `modules/moonfig-serde/` next to, not inside, the
+>   four format modules. The root README stays at the repository root as the
+>   GitHub landing page; the main module carries its own `README.mbt.md` for the
+>   mooncakes page.
+> - Cost: the import paths break. `MuVirus/moonfig/core/format/toml_format`
+>   becomes `MuVirus/moonfig-toml/toml_format` (likewise yaml, xml, cbor), and
+>   `MuVirus/moonfig/serde_bridge` becomes
+>   `MuVirus/moonfig-serde/serde_bridge`; users must `moon add` the adapter
+>   module. CI still runs the serde generator over `examples/serde_extract`
+>   unchanged.

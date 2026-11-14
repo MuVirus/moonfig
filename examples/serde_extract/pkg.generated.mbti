@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/moonfig/examples/serde_extract"
+package "MuVirus/moonfig-examples/serde_extract"
 
 import {
   "moonbit-community/serde.mbt",

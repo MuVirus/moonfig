@@ -1,0 +1,10 @@
+members = [
+  "./modules/moonfig",
+  "./modules/moonfig-cbor",
+  "./modules/moonfig-serde",
+  "./modules/moonfig-toml",
+  "./modules/moonfig-xml",
+  "./modules/moonfig-yaml",
+  "./examples",
+  "./benchmarks",
+]

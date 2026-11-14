@@ -59,6 +59,10 @@ Add the module to an existing MoonBit project:
 moon add MuVirus/moonfig
 ```
 
+TOML, YAML, XML, CBOR and serde ship as separate modules, so a project that only
+reads JSON never pulls their parsers in. Which module to add for which format is
+in the [module README](modules/moonfig/README.mbt.md#optional-adapters).
+
 Then import the packages you need in `moon.pkg`:
 
 ```moonbit
@@ -68,7 +72,7 @@ import {
 }
 ```
 
-To run from a clone:
+To run from a clone (the library itself is in `modules/moonfig/`):
 
 ```sh
 git clone https://github.com/MuVirus/moonfig.git

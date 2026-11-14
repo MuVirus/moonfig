@@ -9,7 +9,7 @@ warnings = "-alert_experimental"
 import {
   "MuVirus/moonfig/core" @config,
   "MuVirus/moonfig/core/format/json_format" @jsonfmt,
-  "MuVirus/moonfig/serde_bridge",
+  "MuVirus/moonfig-serde/serde_bridge",
   "moonbitlang/core/bench",
   "moonbitlang/core/json",
 } for "test"
