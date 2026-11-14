@@ -13,7 +13,7 @@ name = "MuVirus/moonfig"
 
 version = "0.2.0"
 
-readme = "README.mbt.md"
+readme = "README.md"
 
 repository = "https://github.com/MuVirus/moonfig.git"
 

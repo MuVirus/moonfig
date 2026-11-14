@@ -8,7 +8,7 @@ This is the core module. It contains the sources, merging, the JSON / INI /
 paths that need no third-party parser. TOML, YAML, XML, CBOR and serde ship as
 separate modules, so adding moonfig does not pull in a parser you do not use.
 
-[中文](README_ZH.md)
+[中文](README.zh.md)
 
 ## Install
 

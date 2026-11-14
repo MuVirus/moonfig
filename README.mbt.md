@@ -61,7 +61,7 @@ moon add MuVirus/moonfig
 
 TOML, YAML, XML, CBOR and serde ship as separate modules, so a project that only
 reads JSON never pulls their parsers in. Which module to add for which format is
-in the [module README](modules/moonfig/README.mbt.md#optional-adapters).
+in the [module README](modules/moonfig/README.md#optional-adapters).
 
 Then import the packages you need in `moon.pkg`:
 

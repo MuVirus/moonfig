@@ -6,7 +6,7 @@ MoonBit 原生配置库：一处声明，多来源汇入。
 校验，以及不需要第三方解析器的提取路径。TOML、YAML、XML、CBOR 和 serde 各自
 是独立模块，加 moonfig 不会拉上用不到的解析器。
 
-[English](README.mbt.md)
+[English](README.md)
 
 ## 安装
 
