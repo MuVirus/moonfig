@@ -138,6 +138,10 @@ pub extend UInt64Text with @json.ToJson::{to_json}
 /// 提取到结构体：`Value` → `Json` → `FromJson`。
 ///
 /// 用户的类型用编译器自带的 `derive(FromJson)`。
+///
+/// 实验性：这条路径的入口和严格性探针可能随版本变化；默认走 `FromConfig`，
+/// 见 `docs/design/from_config.md`。
+#alert(experimental, "derive(FromJson) extraction is experimental and may change; prefer FromConfig")
 pub fn[T : @json.FromJson] extract(
   v : @config.Value,
 ) -> T raise @config.ConfigError {
@@ -148,6 +152,9 @@ pub fn[T : @json.FromJson] extract(
 /// 取配置里某个路径的值并提取成用户结构体。
 ///
 /// 原来是 `Config::extract`，拆分时降级成自由函数——理由同 `to_json`。
+///
+/// 实验性：同 `extract`。
+#alert(experimental, "derive(FromJson) extraction is experimental and may change; prefer FromConfig")
 pub fn[T : @json.FromJson] extract_from(
   cfg : @config.Config,
   path : String,
@@ -160,6 +167,9 @@ pub fn[T : @json.FromJson] extract_from(
 ///
 /// 未知键不在这条路上：`derive(FromJson)` 会忽略结构体里没有的字段，
 /// 要查未知键请用 `Rule::allowed_keys` 按键校验。
+///
+/// 实验性：同 `extract`。
+#alert(experimental, "derive(FromJson) extraction is experimental and may change; prefer FromConfig")
 pub fn[T : @json.FromJson + @config.Validate] extract_validated_from(
   cfg : @config.Config,
   path : String,
@@ -420,6 +430,8 @@ fn same_key_path(a : @config.KeyPath, b : @config.KeyPath) -> Bool {
 /// 嵌套结构体不需要逐字段手写：子结构体继续用 derive(FromJson)，字段里
 /// 一行委托，两条路径在字段级混搭。
 ///
+/// 实验性：委托的是 `derive(FromJson)` 路径，入口和严格性探针可能随版本变化。
+///
 /// ```mbt nocheck
 /// impl FromConfig for Server with fn from_config(get : Getter) -> Server raise ConfigError {
 ///   {
@@ -428,6 +440,7 @@ fn same_key_path(a : @config.KeyPath, b : @config.KeyPath) -> Bool {
 ///   }
 /// }
 /// ```
+#alert(experimental, "json_field delegates to the experimental derive(FromJson) path and may change")
 pub fn[T : @json.FromJson] json_field(
   g : @config.Getter,
   tag : String,

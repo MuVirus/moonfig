@@ -5,3 +5,7 @@ import {
 }
 
 pkgtype(kind: "executable")
+
+// The example exercises the experimental derive(FromJson) extraction path.
+
+warnings = "-alert_experimental"

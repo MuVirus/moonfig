@@ -2,6 +2,10 @@ import {
   "moonbit-community/serde.mbt" @serde,
 }
 
+// The benchmark also measures the experimental derive(FromJson) path.
+
+warnings = "-alert_experimental"
+
 import {
   "MuVirus/moonfig/core" @config,
   "MuVirus/moonfig/core/format/json_format" @jsonfmt,

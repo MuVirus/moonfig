@@ -8,3 +8,7 @@ import {
 import {
   "moonbitlang/core/double",
 } for "wbtest"
+
+// This package implements and tests the experimental derive(FromJson) path.
+
+warnings = "-alert_experimental"

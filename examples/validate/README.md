@@ -4,6 +4,8 @@
 
 这个示例用一份写坏的配置演示两条用法：按键校验、提取到结构体后校验。两条路共用同一套规则和错误类型，只是约束写在哪里的区别。
 
+提取后校验用的是 `derive(FromJson)` 的 `extract_validated_from`，这条路径是实验性的；示例在 `moon.pkg` 里关掉了 `alert_experimental`。
+
 运行：
 
 ```sh
