@@ -1,9 +1,13 @@
 import {
   "MuVirus/moonfig/core" @config,
   "moonbitlang/core/encoding/utf8",
-  "moonbitlang/core/bigint",
+  "moonbitlang/core/string",
   "moonbitlang/core/json",
 }
+
+import {
+  "moonbitlang/core/bigint",
+} for "test"
 
 import {
   "moonbitlang/core/double",

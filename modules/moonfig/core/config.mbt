@@ -105,7 +105,7 @@ fn attach_origin(value : Value, origin : &OriginSite?) -> Value {
       }
       match value.kind {
         ValueKind::Table(table) => {
-          let mapped : Map[String, Value] = Map([], capacity=table.capacity())
+          let mapped : Map[String, Value] = Map([], capacity=table.length())
           for key, child in table {
             mapped[key] = attach_origin(child, origin)
           }

@@ -116,7 +116,10 @@ pub impl @json.FromJson for UInt64Text with fn from_json(json, path) {
       (path, "UInt64::from_json: expected non-negative integer"),
     )
   }
-  let big = @bigint.BigInt::from_string(text)
+  let big = @string.parse_bigint(text) catch {
+    _ =>
+      raise @json.JsonDecodeError((path, "UInt64::from_json: expected integer"))
+  }
   if big.compare_uint64(18446744073709551615UL) > 0 {
     raise @json.JsonDecodeError((path, "UInt64::from_json: overflow"))
   }
@@ -325,7 +328,7 @@ fn to_float_probe_json(
       Json::array(out)
     }
     @config.ValueKind::Table(table) => {
-      let obj = Map([], capacity=table.capacity())
+      let obj = Map([], capacity=table.length())
       for key, item in table {
         obj[key] = to_float_probe_json(item, current.add(key), target)
       }
@@ -358,7 +361,7 @@ fn to_str_probe_json(
       Json::array(out)
     }
     @config.ValueKind::Table(table) => {
-      let obj = Map([], capacity=table.capacity())
+      let obj = Map([], capacity=table.length())
       for key, item in table {
         obj[key] = to_str_probe_json(item, current.add(key), target)
       }
@@ -408,7 +411,7 @@ fn to_bytes_probe_json(
       Json::array(out)
     }
     @config.ValueKind::Table(table) => {
-      let obj = Map([], capacity=table.capacity())
+      let obj = Map([], capacity=table.length())
       for key, item in table {
         obj[key] = to_bytes_probe_json(item, current.add(key), target)
       }

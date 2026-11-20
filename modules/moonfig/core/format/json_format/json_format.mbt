@@ -82,7 +82,7 @@ fn json_to_value(json : Json) -> @config.Value raise @config.ConfigError {
     Json::String(s) => @config.Value::str(s)
     Json::Array(arr) => @config.Value::array(arr.map(json_to_value))
     Json::Object(obj) => {
-      let table = Map([], capacity=obj.capacity())
+      let table = Map([], capacity=obj.length())
       for k, v in obj {
         table[k] = json_to_value(v)
       }
@@ -107,7 +107,10 @@ fn is_integer_literal(literal : String) -> Bool {
 /// 调用前必须先用 `is_integer_literal` 过一遍。
 /// 真的塞不进 `Int64` 的整数直接报错，不做静默截断。
 fn int64_of(literal : String) -> Int64 raise @config.ConfigError {
-  let big = @bigint.BigInt::from_string(literal)
+  let big = @string.parse_bigint(literal) catch {
+    _ =>
+      raise @config.ConfigError::ParseError("\{literal} is not a valid integer")
+  }
   if big.compare_int64(9223372036854775807L) > 0 ||
     big.compare_int64(-9223372036854775808L) < 0 {
     raise @config.ConfigError::ParseError(
@@ -144,7 +147,7 @@ pub fn to_json(v : @config.Value) -> Json {
     @config.ValueKind::Bytes(b) => @json.to_json(b)
     @config.ValueKind::Array(arr) => Json::array(arr.map(to_json))
     @config.ValueKind::Table(t) => {
-      let obj = Map([], capacity=t.capacity())
+      let obj = Map([], capacity=t.length())
       for k, x in t {
         obj[k] = to_json(x)
       }
