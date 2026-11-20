@@ -483,13 +483,15 @@ fn explain(
     Some(found) => found.kind.name()
     None => "unknown"
   }
-  if message.contains("expected number in string representation") &&
-    actual == "Int" {
-    // 整数来源落进了 `Int64` / `UInt64` / `BigInt` 字段：换个类型就能取，
-    // 不是数据的问题。探针触发的同款报错说明来源不是整数（字符串、字节
-    // 串被标准库解析成了数字），按普通的类型不符报，别误导用户去换类型。
-    // `BigInt` 的解析失败是 "invalid number in string representation"，
-    // 本来就不进这个分支。
+  // 整数来源落进了 `Int64` / `UInt64` / `BigInt` 字段：换个类型就能取，
+  // 不是数据的问题。core 对这三种类型只收 JSON 字符串，各自的措辞又不一样
+  // （`Int64` 是 "expected a string such as ..."、`BigInt` 是 "expected
+  // number in string representation"），所以这里看类型不看原文，core 改措辞
+  // 不会漏掉。探针触发的同款报错说明来源不是整数（字符串、字节串被标准库
+  // 解析成了数字），实际类型不是 Int，按普通的类型不符报，别误导用户去换
+  // 类型。
+  if actual == "Int" &&
+    (expected == "Int64" || expected == "UInt64" || expected == "BigInt") {
     return @config.ConfigError::ParseError(
       "key '\{key}' is a 64-bit integer: declare the struct field as Int64Text or use get_int",
     )

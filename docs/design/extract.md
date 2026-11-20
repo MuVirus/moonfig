@@ -113,6 +113,6 @@ Another cost: a `Double` field receiving an integer beyond 2^53 takes an approxi
 | Missing field (`Missing field port`) | `MissingKey("db.port")` |
 | Type mismatch (`Int::from_json: expected number`) | `TypeMismatch("db.port", "Int", "Str")` |
 | Integer overflow (`Int::from_json: overflow`) | `ParseError("key 'db.port' is out of range for Int")` |
-| Struct declares `Int64` (`expected number in string representation`) | `ParseError("key 'db.port' is a 64-bit integer: declare the struct field as Int64Text or use get_int")` |
+| Struct declares `Int64` and the source is an integer | `ParseError("key 'db.port' is a 64-bit integer: declare the struct field as Int64Text or use get_int")` |
 
 The expected type comes from the standard library's message prefix (`String` → `Str`, `Double` → `Float`, `Map` → `Table`), and the actual type is looked up from the `Value`, so names in messages match `get_*`. Variant fields and message text are in [errors.md](../reference/errors.md).

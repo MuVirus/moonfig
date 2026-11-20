@@ -25,7 +25,7 @@ pub struct Int64Text {
   value : Int64
 }
 pub fn Int64Text::equal(Self, Self) -> Bool
-pub fn Int64Text::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Int64Text::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Int64Text::new(Int64) -> Self
 pub fn Int64Text::not_equal(Self, Self) -> Bool
 pub fn Int64Text::to_int64(Self) -> Int64
@@ -47,7 +47,7 @@ pub struct UInt64Text {
   value : UInt64
 }
 pub fn UInt64Text::equal(Self, Self) -> Bool
-pub fn UInt64Text::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn UInt64Text::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn UInt64Text::new(UInt64) -> Self
 pub fn UInt64Text::not_equal(Self, Self) -> Bool
 pub fn UInt64Text::to_json(Self) -> @json.Json
