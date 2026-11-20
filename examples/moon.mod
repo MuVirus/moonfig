@@ -16,5 +16,5 @@ import {
   "MuVirus/moonfig-yaml@0.2.0",
   "MuVirus/moonfig-serde@0.2.0",
   "moonbit-community/serde.mbt@0.3.1",
-  "moonbitlang/x@0.5.5",
+  "moonbitlang/x@0.5.7",
 }

@@ -38,5 +38,5 @@ preferred_target = "native"
 description = "A native configuration library for MoonBit: declare once, gather from many sources."
 
 import {
-  "moonbitlang/x@0.5.5",
+  "moonbitlang/x@0.5.7",
 }
