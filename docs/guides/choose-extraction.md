@@ -77,4 +77,4 @@ Nesting can be mixed: inside a `FromConfig` field, delegate in one line with `@j
 - For validation, see [validate.md](../design/validate.md).
 - Next step: for the complete code, see [from_config](../../examples/from_config/README.md),
   [serde_extract](../../examples/serde_extract/README.md),
-  [strict_types](../../examples/strict_types/README.md).
+  [from_json_extract](../../examples/from_json_extract/README.md).

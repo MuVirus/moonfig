@@ -1,0 +1,19 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/moonfig-examples/from_json_extract"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+#derive(@json.FromJson)
+type DbCfg
+pub fn DbCfg::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
+
+// Type aliases
+
+// Traits

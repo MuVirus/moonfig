@@ -77,4 +77,4 @@ let port : Port = @jsonfmt.extract_from(cfg, "db")
 - 校验见 [validate.md](../design/validate.zh.md)。
 - 下一步：完整代码见 [from_config](../../examples/from_config/README.md)、
   [serde_extract](../../examples/serde_extract/README.md)、
-  [strict_types](../../examples/strict_types/README.md)。
+  [from_json_extract](../../examples/from_json_extract/README.md)。

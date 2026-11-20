@@ -128,8 +128,6 @@ db.port = 6543
 
 配置建好后按路径（如 `db.host`）取值：`get_string` / `get_int` / `get_float` / `get_bool` / `get_bytes`。缺键或类型不符会直接报错。
 
-完整示例：[examples/strict_types](examples/strict_types/README.md)。
-
 ### 提取到结构体
 
 也可以把整棵配置读进自己的结构体。支持三种常见写法：手写字段映射、serde、`derive(FromJson)`。手写映射是默认路径；`derive(FromJson)` 是实验性的，使用时会有 `alert_experimental` 提示。怎么选见
@@ -137,6 +135,7 @@ db.port = 6543
 
 - [examples/from_config](examples/from_config/README.md)
 - [examples/serde_extract](examples/serde_extract/README.md)
+- [examples/from_json_extract](examples/from_json_extract/README.md)
 - 设计取舍：[from_config.zh.md](docs/design/from_config.zh.md)（默认路径）、[extract.zh.md](docs/design/extract.zh.md)（三条路径）
 
 ### 更多示例
