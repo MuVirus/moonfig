@@ -1,6 +1,6 @@
 # Command-line arguments (CliSource)
 
-> **Conclusion**: one `CliSource` uses only one value style; short options must be registered, repeated arguments must be declared as arrays, and positional arguments map by declaration.
+> **Conclusion**: one `CliSource` uses only one value style; short options must be registered and long switches may be, repeated arguments must be declared as arrays, and positional arguments map by declaration.
 > **Authority**: Normative — the contract from argv to config keys follows this document; implementation details follow `cli_source/`.
 > **Out of scope**: Full code is in [examples/](../../examples/README.md); history is in [decisions.md](../decisions/decisions.md).
 
@@ -15,10 +15,12 @@ Type inference is shared with `EnvSource` through `Value::from_literal`, rules i
 | `--db.port 6543 --debug` | `Separate` | `db.port = 6543`, `debug = true` |
 | `--db.port=6543` | `Separate` | `ParseError`, never switches style automatically |
 | `-p=5432 -vq` | `Equals` + register `p→db.port`, `v→verbose`, `q→quiet` | `db.port = 5432`, `verbose = true`, `quiet = true` |
+| `--debug simulate` | `Separate`, `debug` not registered | `debug = "simulate"`; `simulate` is not a positional |
+| `--debug simulate` | `Separate` + `with_long_flag("debug", "debug")`, `with_positional(0, "command")` | `debug = true`, `command = "simulate"` |
 | `--tag a --tag b` | `Separate` + `with_array("tag")` | `tag = ["a", "b"]` |
 | `--a=1 --a.b=2` | `Equals` (default) | `ParseError`, no config produced |
 
-Which path a short option lands on is set at registration time; a long option's key name is itself the path. The following sections explain why these results are defined this way.
+Which path a short option lands on is set at registration time; a long option's key name is itself the path, unless it is registered as a switch, which may give it another key. The following sections explain why these results are defined this way.
 
 ## One source uses one value style
 
@@ -31,10 +33,10 @@ Choose one of two styles, fixed at construction; the default is `Equals`, and
 They never both apply. Under `Separate`, writing `--key=value` raises `ParseError` directly; under `Equals`, writing
 `-p value` for a registered short option also errors.
 
-**Why not accept both**: the same argv also carries the program's own arguments, and without a long-option registry there is no way to tell whether
-`positional` in `--flag positional` is a value or a program argument. With the style fixed, splitting is deterministic and config keys cannot
-silently swallow positional arguments. Under `Equals`, `--key value` can only mean "switch + positional argument" — a bare `--key` is a valid boolean switch
-in both styles, and must not be treated as an error.
+**Why not accept both**: the same argv also carries the program's own arguments, and the style alone cannot tell whether `positional` in
+`--flag positional` is a value or a program argument. With the style fixed, splitting is deterministic and config keys cannot silently swallow positional
+arguments. Under `Equals`, `--key value` can only mean "switch + positional argument"; under `Separate` a bare `--key` still takes the next argument as its
+value, so a boolean that has a positional argument behind it is declared with `with_long_flag` (see below). A bare `--key` is never an error on its own.
 
 **`Separate` boundaries**: a value starting with `-` is taken as the next option, so use `Equals` with `--key=-1` for negative numbers;
 a lone `-` still works as a value. Everything after `--` is positional. This style suits the case where the whole command line is config:
@@ -69,15 +71,18 @@ Origin labels use the original argv index (`cli:argv[1]`), without the value. Wh
 `@env.args()` or the `args` field. Values after an unregistered short option may still count as positional arguments; program arguments are best placed
 after `--`.
 
-## Short options must be registered
+## Short options must be registered, long switches may be
 
 `with_short_option` registers a short option that takes a value, `with_short_flag` registers a boolean switch. Unregistered short options are ignored as program
-arguments. Long options have no registry; `--key` is always a config argument, and bare it is a switch.
+arguments. Long options need no registry: `--key` is always a config argument, and bare it is a switch — except under `Separate`, where it takes the next
+argument as its value. `with_long_flag` declares a long boolean, so it never takes a value in either style and may land on another key; a registered switch
+rejects `--key=value`, write `--no-key` for false.
 
 The value syntax follows the current style, and `-p5432` or the other syntax is not accepted additionally: one style has exactly one way to split.
-Boolean short options can be chained (`-vq`); switches take no value, use `--no-key` for false.
+Boolean short options can be chained (`-vq`).
 
-**Why register**: short options collide with the program's own arguments too easily; only what the author explicitly declared counts as config.
+**Why register**: short options collide with the program's own arguments too easily; only what the author explicitly declared counts as config. A long switch is
+declared only where the next argument's role is ambiguous — under `Separate`, a value and a positional look the same.
 
 ## Repeated arguments must be declared as arrays explicitly
 

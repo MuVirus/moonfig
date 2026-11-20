@@ -30,7 +30,8 @@ Layer defaults, configuration files, environment variables and the command line 
 2. Add the file layer: `FileSource::new("config/app.json", JsonFormat::new())`.
 3. Add the environment variable layer: `EnvSource::new("APP_")`; `APP_DB_PORT` lands on `db.port`.
 4. Add the command-line layer: `CliSource::new()`; `--log-level=debug` lands on `log.level`. Short options and arrays
-   must be registered first; for the style, see [cli-args.md](../design/cli-args.md).
+   must be registered first, and so must a boolean long option with a positional argument behind it in the `Separate`
+   style (`with_long_flag`); for the style, see [cli-args.md](../design/cli-args.md).
 5. After `build()`, read values by key; for diagnostics use `origin_of` (find which layer a key came from) or `origins`
    (list all leaf paths).
 

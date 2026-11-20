@@ -11,6 +11,10 @@
 /// `with_short_flag` 登记，可以连写（`-vq` 等于 `-v -q`）。短开关不取值，
 /// 要显式写 false 用 `--no-key`。
 ///
+/// **长开关建议登记。** 长选项不登记也能用，但 `Separate` 风格下裸 `--key`
+/// 会把后面不像选项的参数当成值；用 `with_long_flag` 登记后它不取值，后面的
+/// 参数留给位置参数。登记过的长开关写 `--key=value` 报错。
+///
 /// **短选项要先登记。** `with_short_option("p", "db.port")` 收值，写法跟
 /// 当前风格一致；没登记的短选项一律忽略。
 ///
@@ -44,6 +48,7 @@ pub struct CliSource {
   args : Array[String]
   priv value_style : CliValueStyle
   priv shorts : Map[String, CliShort]
+  priv longs : Map[String, String]
   priv arrays : Map[String, Unit]
   priv positionals : Map[Int32, String]
   priv program_name : Bool
@@ -126,6 +131,7 @@ pub fn CliSource::from_args(
     args,
     value_style: CliValueStyle::Equals,
     shorts: Map([]),
+    longs: Map([]),
     arrays: Map([]),
     positionals: Map([]),
     program_name,
@@ -161,6 +167,7 @@ pub fn CliSource::with_value_style(
     args: self.args,
     value_style: style,
     shorts: self.shorts,
+    longs: self.longs,
     arrays: self.arrays,
     positionals: self.positionals,
     program_name: self.program_name,
@@ -216,6 +223,42 @@ pub fn CliSource::with_short_flag(
   key : String,
 ) -> CliSource {
   self.shorts[short_name(short)] = { key, takes_value: false, }
+  self
+}
+
+///|
+/// 登记一个长选项布尔开关：登记后它在两种风格下都不取值
+///
+/// 长选项默认不用登记：裸 `--debug` 就是 `true`，`--no-debug` 是 `false`。
+/// 但 `Separate` 风格下它会把后面不像选项的参数当成值（`--debug simulate`
+/// → `debug = "simulate"`）。登记成开关后，后面那个参数仍然算位置参数；
+/// 顺带可以把开关落到别的路径（`--verbose` → `log.verbose`）。登记过的开关
+/// 写 `--debug=...` 报错，要 false 写 `--no-debug`。
+///
+/// `long` 写 `debug` 或 `--debug` 都行，`-` 和 `.` 按层级归一。
+///
+/// Example:
+///
+/// ```mbt check
+/// test {
+///   let cfg = @config.Config::new()
+///     .add(
+///       @cli_source.CliSource::from_args(["--debug", "simulate"])
+///       .with_value_style(@cli_source.CliValueStyle::Separate)
+///       .with_long_flag("debug", "debug")
+///       .with_positional(0, "command"),
+///     )
+///     .build()
+///   assert_true(cfg.get_bool("debug"))
+///   assert_eq(cfg.get_string("command"), "simulate")
+/// }
+/// ```
+pub fn CliSource::with_long_flag(
+  self : CliSource,
+  long : String,
+  key : String,
+) -> CliSource {
+  self.longs[normalize_key(long_name(long))] = key
   self
 }
 
@@ -357,6 +400,11 @@ fn parse_long(
     Some(pair) => {
       let key = pair.0
       let name = "--\{key}"
+      if long_flag(source, key) is Some(flag) {
+        raise @config.ConfigError::ParseError(
+          "option cli:\{name}: a flag takes no value; write cli:--\{flag.0} or cli:--no-\{flag.0}",
+        )
+      }
       if source.value_style == CliValueStyle::Separate {
         raise @config.ConfigError::ParseError(
           "argument cli:\{name}: style Separate expects cli:\{name} value, not cli:\{name}=value",
@@ -368,43 +416,76 @@ fn parse_long(
     None => {
       let key = rest
       let name = "--\{key}"
-      match key.strip_prefix("no-") {
-        Some(inner) => {
+      match long_flag(source, key) {
+        Some(flag) => {
           assign(
             source,
             root,
             seen,
-            key_path(inner),
+            key_path(flag.0),
             name,
-            @config.Value::bool(false),
+            @config.Value::bool(!flag.1),
           )
           index
         }
         None =>
-          if source.value_style == CliValueStyle::Separate &&
-            next_is_value(source, index) {
-            assign(
-              source,
-              root,
-              seen,
-              key_path(key),
-              name,
-              literal_arg(source.args[index], name),
-            )
-            index + 1
-          } else {
-            assign(
-              source,
-              root,
-              seen,
-              key_path(key),
-              name,
-              @config.Value::bool(true),
-            )
-            index
+          match key.strip_prefix("no-") {
+            Some(inner) => {
+              assign(
+                source,
+                root,
+                seen,
+                key_path(inner),
+                name,
+                @config.Value::bool(false),
+              )
+              index
+            }
+            None =>
+              if source.value_style == CliValueStyle::Separate &&
+                next_is_value(source, index) {
+                assign(
+                  source,
+                  root,
+                  seen,
+                  key_path(key),
+                  name,
+                  literal_arg(source.args[index], name),
+                )
+                index + 1
+              } else {
+                assign(
+                  source,
+                  root,
+                  seen,
+                  key_path(key),
+                  name,
+                  @config.Value::bool(true),
+                )
+                index
+              }
           }
       }
     }
+  }
+}
+
+///|
+/// 长选项是不是登记过的布尔开关：返回落到的路径和是否为 `no-` 取反
+///
+/// 整名优先：登记了 `no-cache` 时，`--no-cache` 就是它自己的开关，不再取反。
+fn long_flag(source : CliSource, name : StringView) -> (String, Bool)? {
+  match source.longs.get(normalize_key(name)) {
+    Some(target) => Some((target, false))
+    None =>
+      match name.strip_prefix("no-") {
+        Some(inner) =>
+          match source.longs.get(normalize_key(inner)) {
+            Some(target) => Some((target, true))
+            None => None
+          }
+        None => None
+      }
   }
 }
 
@@ -506,6 +587,15 @@ fn short_name(short : String) -> String {
   match short.strip_prefix("-") {
     Some(rest) => rest.to_owned()
     None => short
+  }
+}
+
+///|
+/// 长选项名归一化：去掉前导 `--`
+fn long_name(long : String) -> String {
+  match long.strip_prefix("--") {
+    Some(rest) => rest.to_owned()
+    None => long
   }
 }
 

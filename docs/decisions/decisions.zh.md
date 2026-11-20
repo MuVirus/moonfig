@@ -25,6 +25,7 @@
 | #13 | 提取路径的默认顺序 | 生效（取代 #11 的默认顺序） | design/from_config.md、design/extract.md、guides/choose-extraction.md |
 | #14 | `derive(FromJson)` 提取标记为实验性 | 生效 | design/extract.md、design/from_config.md、guides/choose-extraction.md |
 | #15 | 第三方解析器放进独立模块，不只是独立包 | 生效（取代 #12 的包放置） | design/sources.md、design/extract.md、plan/roadmap.md |
+| #16 | 长选项布尔开关可以登记 | 生效 | design/cli-args.md、guides/layer-sources.md |
 
 ## 1. 包名不能和 MoonBit 标准库的包重名
 
@@ -278,3 +279,20 @@
 >   `MuVirus/moonfig/serde_bridge` 变成 `MuVirus/moonfig-serde/serde_bridge`，
 >   用户需要 `moon add` 对应模块。CI 对 `examples/serde_extract` 跑 serde
 >   生成器的路径不变。
+
+## 16. 长选项布尔开关可以登记
+
+状态：生效｜影响：design/cli-args.md、guides/layer-sources.md
+
+> **2026-11 实测：`Separate` 下 `--debug simulate` 得到 `debug = "simulate"`，
+> `simulate` 根本进不了位置参数表。**
+> 风格决定长选项怎么切分，`Separate` 永远拿下一个参数当值，所以「布尔后面跟着
+> 位置参数」必须在解析前就能区分。`with_long_flag` 记录某个长选项是开关：两种
+> 风格下都不取值，还可以落到别的路径（`--verbose` → `log.verbose`）。登记过的
+> 开关写 `--key=value` 报错，和 `with_short_flag` 拒绝 `-v=false` 同理，false 只有
+> `--no-key` 一种写法。
+>
+> 代价：布尔从此有两种写法——没登记的 `--key` 在 `Separate` 下仍会吃掉下一个
+> 参数，登记过的不会。只有开关可以登记；收值的长选项仍然不用登记，因为每种风格
+> 本来就说清了值在哪。匹配时整名优先于 `no-` 前缀，所以叫 `no-cache` 的开关会
+> 盖住 `cache` 的取反写法。

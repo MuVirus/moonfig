@@ -20,6 +20,7 @@ pub fn CliSource::kind(Self) -> @core.SourceKind
 pub fn CliSource::new() -> Self
 pub fn CliSource::raw_locator(Self) -> &@core.Locator?
 pub fn CliSource::with_array(Self, String) -> Self
+pub fn CliSource::with_long_flag(Self, String, String) -> Self
 pub fn CliSource::with_positional(Self, Int32, String) -> Self
 pub fn CliSource::with_short_flag(Self, String, String) -> Self
 pub fn CliSource::with_short_option(Self, String, String) -> Self

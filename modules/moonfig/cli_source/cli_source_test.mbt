@@ -262,6 +262,91 @@ test "CliSource rejects a value on a short flag" {
 }
 
 ///|
+/// 登记过的长开关在 `Separate` 下不取值：后面那个参数还是位置参数
+test "CliSource long flags keep the next positional" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--debug", "simulate", "model.fmu"])
+      .with_value_style(CliValueStyle::Separate)
+      .with_long_flag("debug", "debug")
+      .with_positional(0, "command")
+      .with_positional(1, "model"),
+    )
+    .build()
+  assert_true(cfg.get_bool("debug"))
+  assert_eq(cfg.get_string("command"), "simulate")
+  assert_eq(cfg.get_string("model"), "model.fmu")
+}
+
+///|
+/// 没登记的长开关照旧把下一个参数当值，位置参数收不到
+test "CliSource unregistered long options still take the next value" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--debug", "simulate"]).with_value_style(
+        CliValueStyle::Separate,
+      ),
+    )
+    .build()
+  assert_eq(cfg.get_string("debug"), "simulate")
+}
+
+///|
+/// 登记过的长开关可以落到别的路径，`--no-` 取反跟着走，名字带不带 `--` 都行
+test "CliSource maps long flags to their key and negates" {
+  let on = Config::new()
+    .add(
+      CliSource::from_args(["--verbose"]).with_long_flag(
+        "verbose", "log.verbose",
+      ),
+    )
+    .build()
+  assert_true(on.get_bool("log.verbose"))
+  let off = Config::new()
+    .add(
+      CliSource::from_args(["--no-verbose"]).with_long_flag(
+        "--verbose", "log.verbose",
+      ),
+    )
+    .build()
+  assert_false(off.get_bool("log.verbose"))
+}
+
+///|
+/// 登记过的长开关和短开关一样不收值，别让人以为 `--debug=false` 生效了
+test "CliSource rejects a value on a long flag" {
+  let message = try {
+    ignore(
+      Config::new()
+      .add(
+        CliSource::from_args(["--debug=false"]).with_long_flag("debug", "debug"),
+      )
+      .build(),
+    )
+    "no error"
+  } catch {
+    ConfigError::ParseError(message) => message
+    e => e.to_string()
+  }
+  assert_true(message.contains("--debug"))
+  assert_true(message.contains("flag"))
+}
+
+///|
+/// 登记了 `no-` 开头的名字时整名优先，不再当取反写法
+test "CliSource prefers an exact long flag name over negation" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--no-cache"])
+      .with_long_flag("no-cache", "no.cache")
+      .with_long_flag("cache", "cache"),
+    )
+    .build()
+  assert_true(cfg.get_bool("no.cache"))
+  assert_true(cfg.origin_of("cache") is None)
+}
+
+///|
 /// 没登记的短选项仍然忽略，跟以前一样
 test "CliSource ignores unregistered short options" {
   let cfg = Config::new()

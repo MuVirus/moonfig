@@ -29,6 +29,7 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #13 | Default order of extraction paths | active (supersedes #11's default order) | design/from_config.md, design/extract.md, guides/choose-extraction.md |
 | #14 | `derive(FromJson)` extraction is experimental | active | design/extract.md, design/from_config.md, guides/choose-extraction.md |
 | #15 | Third-party parsers live in separate modules, not packages | active (supersedes #12's package placement) | design/sources.md, design/extract.md, plan/roadmap.md |
+| #16 | Long switches may be registered | active | design/cli-args.md, guides/layer-sources.md |
 
 ## 1. Package names cannot collide with MoonBit standard library package names
 
@@ -424,3 +425,24 @@ Status: active (supersedes #12's package placement) | Affects: design/sources.md
 >   `MuVirus/moonfig-serde/serde_bridge`; users must `moon add` the adapter
 >   module. CI still runs the serde generator over `examples/serde_extract`
 >   unchanged.
+
+## 16. Long switches may be registered
+
+Status: active | Affects: design/cli-args.md, guides/layer-sources.md
+
+> **Measured 2026-11: under `Separate`, `--debug simulate` sets
+> `debug = "simulate"` and `simulate` never reaches the positional table.**
+> The style decides how a long option is split, and `Separate` always takes the
+> next argument as the value, so a boolean followed by a positional must be
+> distinguishable before parsing. `with_long_flag` records that a long option
+> is a switch: in both styles it takes no value, and it may land on another key
+> (`--verbose` → `log.verbose`). A registered switch rejects `--key=value` the
+> same way `with_short_flag` rejects `-v=false`, so false has one spelling,
+> `--no-key`.
+>
+> Cost: two spellings of a boolean now exist — an unregistered `--key` still
+> takes the next argument under `Separate`, while a registered one never does.
+> Only switches are registrable; long options that take a value still need no
+> registry, because each style already says where the value is. Registration
+> matches the whole name before the `no-` prefix, so a flag literally named
+> `no-cache` shadows the negation of `cache`.

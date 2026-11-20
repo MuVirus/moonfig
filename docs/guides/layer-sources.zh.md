@@ -31,7 +31,8 @@
 2. 加文件层：`FileSource::new("config/app.json", JsonFormat::new())`。
 3. 加环境变量层：`EnvSource::new("APP_")`；`APP_DB_PORT` 落到 `db.port`。
 4. 加命令行层：`CliSource::new()`；`--log-level=debug` 落到 `log.level`。短选项和数组
-   要先登记，风格见 [cli-args.md](../design/cli-args.zh.md)。
+   要先登记；`Separate` 风格下后面跟着位置参数的长选项布尔开关也要登记
+   （`with_long_flag`）。风格见 [cli-args.md](../design/cli-args.zh.md)。
 5. `build()` 后按键取值；需要诊断时用 `origin_of`（查某个键来自哪层）或 `origins`
    （列出所有叶子路径）。
 

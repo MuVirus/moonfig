@@ -1,6 +1,6 @@
 # 命令行参数（CliSource）
 
-> **结论**：一个 `CliSource` 只用一种取值风格；短选项必须登记，重复参数必须声明成数组，位置参数按声明映射。
+> **结论**：一个 `CliSource` 只用一种取值风格；短选项必须登记，长开关可以登记，重复参数必须声明成数组，位置参数按声明映射。
 > **权威边界**：规范——argv 到配置键的解析契约以本文为准；实现细节以 `cli_source/` 为准。
 > **不覆盖**：完整代码见 [examples/](../../examples/README.md)，历史见 [decisions.md](../decisions/decisions.zh.md)。
 
@@ -15,10 +15,12 @@
 | `--db.port 6543 --debug` | `Separate` | `db.port = 6543`、`debug = true` |
 | `--db.port=6543` | `Separate` | `ParseError`，不自动换风格 |
 | `-p=5432 -vq` | `Equals` + 登记 `p→db.port`、`v→verbose`、`q→quiet` | `db.port = 5432`、`verbose = true`、`quiet = true` |
+| `--debug simulate` | `Separate`，`debug` 没登记 | `debug = "simulate"`；`simulate` 不算位置参数 |
+| `--debug simulate` | `Separate` + `with_long_flag("debug", "debug")`、`with_positional(0, "command")` | `debug = true`、`command = "simulate"` |
 | `--tag a --tag b` | `Separate` + `with_array("tag")` | `tag = ["a", "b"]` |
 | `--a=1 --a.b=2` | `Equals`（默认） | `ParseError`，不产出配置 |
 
-短选项落到哪个路径由登记时指定，长选项的键名本身就是路径。下面各节解释这些结果为什么这样定。
+短选项落到哪个路径由登记时指定，长选项的键名本身就是路径；登记成长开关的长选项可以落到别的路径。下面各节解释这些结果为什么这样定。
 
 ## 一个来源只用一种取值风格
 
@@ -31,10 +33,11 @@
 不会同时生效。`Separate` 下写 `--key=value` 直接报 `ParseError`；`Equals` 下给登记过的短选项
 写 `-p value` 也报错。
 
-**为什么不做「两种都认」**：同一份 argv 里还有程序自己的参数，没有长选项登记表就无法判断
+**为什么不做「两种都认」**：同一份 argv 里还有程序自己的参数，光看风格无法判断
 `--flag positional` 里的 `positional` 是值还是程序参数。风格固定后，切分是确定的，配置键不会
-悄悄吃掉位置参数。`Equals` 下的 `--key value` 只能解释成「开关 + 位置参数」——裸 `--key` 在
-两种风格里都是合法的布尔开关，不能把它当成错误。
+悄悄吃掉位置参数。`Equals` 下的 `--key value` 只能解释成「开关 + 位置参数」；`Separate` 下裸
+`--key` 仍会把下一个参数当值，所以后面跟着位置参数的布尔开关要用 `with_long_flag` 声明（见后）。
+裸 `--key` 本身永远不算错误。
 
 **`Separate` 的边界**：以 `-` 开头的值会被当成下一个选项，负数请换 `Equals` 用 `--key=-1`；
 单独一个 `-` 仍可当值。`--` 之后全部是位置参数。这个风格适合整条命令行都当配置的场景：
@@ -69,15 +72,18 @@ CLI 要用 `Separate`。
 `@env.args()` 或 `args` 字段。未登记短选项后面的值仍可能被算成位置参数，程序自己的参数建议
 放到 `--` 后面。
 
-## 短选项必须登记
+## 短选项必须登记，长开关可以登记
 
 `with_short_option` 登记收值的短选项，`with_short_flag` 登记布尔开关。没登记的短选项当程序
-参数忽略。长选项没有登记表，`--key` 一律当配置参数，裸写就是开关。
+参数忽略。长选项不需要登记：`--key` 一律当配置参数，裸写就是开关——但 `Separate` 下它会把
+下一个参数当值。`with_long_flag` 声明长选项布尔开关，两种风格下都不取值，也可以落到别的路径；
+登记过的开关写 `--key=value` 报错，要 false 写 `--no-key`。
 
 取值写法跟着当前风格走，不再额外接受 `-p5432` 或另一种写法：一种风格只有一种切分方式。
-布尔短选项可以连写（`-vq`）；开关不取值，要 false 用 `--no-key`。
+布尔短选项可以连写（`-vq`）。
 
-**为什么要登记**：短选项太容易和程序自己的参数撞车，只有作者明确声明过的才当成配置。
+**为什么要登记**：短选项太容易和程序自己的参数撞车，只有作者明确声明过的才当成配置。长开关
+只在下一个参数的归属确实说不清时才需要声明——`Separate` 下值和位置参数长得一模一样。
 
 ## 重复参数要显式声明成数组
 
