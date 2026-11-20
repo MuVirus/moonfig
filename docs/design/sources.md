@@ -51,8 +51,10 @@ pub fn Value::from_literal(StringView) -> Value raise ConfigError
 an integer outside `Int64` raises `ParseError`, never silently degrading. Type inference must finish at this layer: by the time values are read into structs,
 the standard library's `Bool::from_json` / `Double::from_json` reject strings.
 
-`EnvSource` rules: only variables with the given prefix are read, and the prefix is not part of the key; both `_` and `.` count as hierarchy, and keys are lowercased;
-the whole layer shares one site, which stores a "path → variable name" index, so `origin_of("db.port")` can point at
+`EnvSource` rules: only variables with the given prefix are read, and the prefix is not part of the key; `.` always splits hierarchy, and
+`with_separator` adds another literal separator (`"_"` for `APP_DB_PORT` → `db.port`; `"__"` for `APP_DB__HOST_NAME` → `db.host_name`,
+where a single `_` stays in the key). Without `with_separator`, `APP_DB_PORT` is the flat key `db_port`. Keys are lowercased; the whole
+layer shares one site, which stores a "path → variable name" index, so with `with_separator("_")`, `origin_of("db.port")` can point at
 `APP_DB_PORT`. If a scalar occupies a hierarchy name, or two variables land on the same path, it raises `ParseError` rather than guessing a winner by traversal order.
 
 `CliSource` parsing rules (value style, short options, arrays, conflicts) are in [cli-args.md](cli-args.md).

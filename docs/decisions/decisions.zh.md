@@ -16,7 +16,7 @@
 | #4 | JSON 数值的边界 | 生效 | design/extract.md |
 | #5 | CBOR 库的选择 | 生效 | design/sources.md |
 | #6 | 来源追踪与合并规则 | 生效 | design/design.md、design/sources.md、guides/layer-sources.md |
-| #7 | 文件、环境变量、命令行三个 source | 生效 | design/sources.md、design/cli-args.md、guides/layer-sources.md |
+| #7 | 文件、环境变量、命令行三个 source | 部分被取代（#18 改了环境变量的默认分隔符） | design/sources.md、design/cli-args.md、guides/layer-sources.md |
 | #8 | `String::compare` 先比长度 | 生效 | 无（仅实现） |
 | #9 | 校验 | 生效 | design/validate.md |
 | #10 | 浮点加宽与带来源快照 | 生效 | design/design.md、design/sources.md |
@@ -25,7 +25,9 @@
 | #13 | 提取路径的默认顺序 | 生效（取代 #11 的默认顺序） | design/from_config.md、design/extract.md、guides/choose-extraction.md |
 | #14 | `derive(FromJson)` 提取标记为实验性 | 生效 | design/extract.md、design/from_config.md、guides/choose-extraction.md |
 | #15 | 第三方解析器放进独立模块，不只是独立包 | 生效（取代 #12 的包放置） | design/sources.md、design/extract.md、plan/roadmap.md |
-| #16 | 长选项布尔开关可以登记 | 生效 | design/cli-args.md、guides/layer-sources.md |
+| #16 | 长选项布尔开关可以登记 | 部分被取代（#17 改了取值边界） | design/cli-args.md、guides/layer-sources.md |
+| #17 | `Separate` 下负数当值 | 生效（取代 #16 的取值边界） | design/cli-args.md、guides/layer-sources.md |
+| #18 | 环境变量分隔符改为显式开启 | 生效（取代 #7 的环境变量分隔符） | design/sources.md、guides/layer-sources.md |
 
 ## 1. 包名不能和 MoonBit 标准库的包重名
 
@@ -120,7 +122,7 @@
 
 ## 7. 文件、环境变量、命令行三个 source
 
-状态：生效｜影响：design/sources.md、design/cli-args.md、guides/layer-sources.md
+状态：部分被取代（#18 改了环境变量的默认分隔符）｜影响：design/sources.md、design/cli-args.md、guides/layer-sources.md
 
 > **2026-10 实现时定的细节**
 >
@@ -134,6 +136,9 @@
 > - `CliSource` 的取值风格必须二选一：`Equals` 只认 `--key=value`，`Separate` 只认 `--key value`，不在一个来源里混用——混着支持会让 `--flag positional` 这种写法没法解释。短选项必须先登记，重复参数用 `with_array` 显式声明，位置参数用 `with_positional` 按「非选项参数」的顺序映射；解析规则和错误边界见 [cli-args.zh.md](../design/cli-args.zh.md)。
 > - 命令行标签只写参数名（`cli:--db-password`），不写值：密码不该因为来源追踪漏进日志。
 > - 新增的依赖 `moonbitlang/x` 手写进 `moon.mod`，没用 `moon add`（本仓库的约定）。
+>
+> 2026-11 #18 改了环境变量的默认行为：只有 `.` 分层，其它分隔符要 `with_separator`
+> 显式开启。
 
 ## 8. `String::compare` 先比长度
 
@@ -282,7 +287,7 @@
 
 ## 16. 长选项布尔开关可以登记
 
-状态：生效｜影响：design/cli-args.md、guides/layer-sources.md
+状态：部分被取代（#17 改了取值边界）｜影响：design/cli-args.md、guides/layer-sources.md
 
 > **2026-11 实测：`Separate` 下 `--debug simulate` 得到 `debug = "simulate"`，
 > `simulate` 根本进不了位置参数表。**
@@ -296,3 +301,48 @@
 > 参数，登记过的不会。只有开关可以登记；收值的长选项仍然不用登记，因为每种风格
 > 本来就说清了值在哪。匹配时整名优先于 `no-` 前缀，所以叫 `no-cache` 的开关会
 > 盖住 `cache` 的取反写法。
+>
+> 2026-11 #17 收窄了边界：`Separate` 下以 `-` 开头的参数，只有像负数时才算值。
+
+## 17. `Separate` 下负数当值
+
+状态：生效（取代 #16 的取值边界）｜影响：design/cli-args.md、guides/layer-sources.md
+
+> **2026-11 实测：`Separate` 下 `--port -1` 曾经得到 `port = true`，`-1` 被
+> 无声丢掉。** 下一个参数只有不以 `-` 开头才算值，负数看起来都像另一个选项；
+> `-1` 随后走进短选项解析，因为没登记过 `1` 而被忽略。静默丢值比报
+> `ParseError` 更糟。
+>
+> 其他解析器也碰到同样的歧义。clap 把它做成 per-argument 的
+> `allow_negative_numbers` / `allow_hyphen_values`；Python `argparse` 在参数
+> 像负数时把它当位置参数；Go `flag` 无条件取下一个 token。共同的安全默认是
+> 「负数是值，其它 `-` 开头的是选项」。
+>
+> 结论：`CliHyphenValues::{Never, NegativeNumbers, Always}`，默认
+> `NegativeNumbers`，用 `with_hyphen_values` 切换。单独一个 `-` 始终是值，
+> `--` 始终是终止符，任何策略下都不变。`Always` 恢复「下一个 token 就是值」，
+> 支持 `--pattern -x`，代价是文档里写明的吞掉下一个选项；`Never` 恢复旧边界。
+>
+> 代价：判断只看形状「`-` 后面紧跟数字」，不完整解析数字，所以 `-1abc` 也会
+> 被当成值。登记成开关后，后面的 `-1` 仍会落到短选项解析，未登记的名字继续
+> 忽略；这次不把未知短选项改成报错。
+
+## 18. 环境变量分隔符改为显式开启
+
+状态：生效（取代 #7 的环境变量分隔符）｜影响：design/sources.md、guides/layer-sources.md
+
+> **2026-11：`EnvSource` 原来默认把 `_` 和 `.` 都当层级。** 这让
+> `APP_DB_PORT` → `db.port`，但也让键名里没法出现字面 `_`，并且把
+> `APP_LOG_LEVEL` 这类平铺名字都变成了嵌套路径。config-rs 和 figment 默认都不
+> 拆（config-rs 的 `separator` 默认不做替换；figment 不调 `.split(...)` 就不
+> 拆），下划线嵌套在两边都是显式开启。
+>
+> 结论：`.` 始终分层；`with_separator` 再加一个字面分隔符，默认 `""`。
+> `with_separator("_")` 得到旧的 `APP_DB_PORT` → `db.port`；
+> `with_separator("__")` 按双下划线分层、单个 `_` 留在键名里
+> （`APP_DB__HOST_NAME` → `db.host_name`）。多字符分隔符按字面从左到右、
+> 不重叠地匹配。冲突检测、`EnvSite` 来源标签和严格的 `from_literal` 解析都不变。
+>
+> 代价：不开 `with_separator` 时，`APP_DB_PORT` 是平铺的 `db_port`。依赖 `_`
+> 嵌套的代码要补 `.with_separator("_")`。这是破坏性的默认改动，需要写进发布
+> 说明；键名本身含下划线时，推荐用 `with_separator("__")`。

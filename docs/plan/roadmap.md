@@ -92,8 +92,8 @@ Environment variables are all strings:
 
 - **Type inference must be finished at this step** (`"5432"` → `Int`, `"true"` → `Bool`). Waiting until the struct read step is too late — the standard library's `Bool::from_json` and `Double::from_json` both reject strings.
   - How it lands: `core` provides `Value::from_literal`, shared by `EnvSource` / `CliSource` instead of each writing its own.
-- The separator convention has to be decided: does `_` become `.`? Is it case sensitive?
-  - How it lands: both `_` and `.` count as levels, and key names are uniformly lowercased; two variables differing only in case that land on the same path error.
+- Separator convention: which characters split, whether `_` becomes `.`, and case sensitivity.
+  - How it lands: only `.` splits by default; `with_separator("_")` opts into `_`, and `with_separator("__")` keeps single underscores literal. Key names are lowercased; two variables differing only in case that land on the same path error.
 - How prefixes, empty values and list values are handled.
   - How it lands: the prefix is given at construction (`EnvSource::all()` reads everything); an empty value is the empty string; lists are not split and the whole string stays a string.
 

@@ -51,9 +51,12 @@ pub fn Value::from_literal(StringView) -> Value raise ConfigError
 整数超出 `Int64` 报 `ParseError`，不静默降级。类型推断必须在这一层做完，等到按结构体取值时，
 标准库的 `Bool::from_json` / `Double::from_json` 都拒收字符串。
 
-`EnvSource` 的规则：只读指定前缀的变量，前缀不参与键名；`_` 和 `.` 都算层级，键名统一转小写；
-整层共用一个 site，site 里存「路径 → 变量名」索引，`origin_of("db.port")` 能指出是
-`APP_DB_PORT`。标量占了层级名、或两个变量落到同一个路径时报 `ParseError`，不按遍历顺序猜赢家。
+`EnvSource` 的规则：只读指定前缀的变量，前缀不参与键名；`.` 始终分层，`with_separator` 再
+加一个字面分隔符（`"_"` 让 `APP_DB_PORT` → `db.port`；`"__"` 让 `APP_DB__HOST_NAME` →
+`db.host_name`，单个 `_` 留在键名里）。不开 `with_separator` 时 `APP_DB_PORT` 是平铺的
+`db_port`。键名统一转小写；整层共用一个 site，site 里存「路径 → 变量名」索引，所以用
+`with_separator("_")` 时 `origin_of("db.port")` 能指出是 `APP_DB_PORT`。标量占了层级名、
+或两个变量落到同一个路径时报 `ParseError`，不按遍历顺序猜赢家。
 
 `CliSource` 的解析规则（取值风格、短选项、数组、冲突）见 [cli-args.md](cli-args.zh.md)。
 

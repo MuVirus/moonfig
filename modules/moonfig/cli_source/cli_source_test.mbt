@@ -4,7 +4,7 @@
 using @config {type Config, type ConfigError, type SourceKind}
 
 ///|
-using @cli_source {type CliSource, type CliValueStyle}
+using @cli_source {type CliHyphenValues, type CliSource, type CliValueStyle}
 
 ///|
 /// 参数表转配置
@@ -173,6 +173,103 @@ test "CliSource stops separate values at the terminator and at options" {
   assert_true(cfg.get_bool("verbose"))
   assert_true(cfg.get_bool("debug"))
   assert_eq(cfg.origins().length(), 2)
+}
+
+///|
+/// `Separate` 默认把负数当值，其它 `-` 开头仍当选项
+test "CliSource reads negative numbers as separate values" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args([
+        "--port", "-1", "--ratio", "-1.5", "--scale", "-1e3",
+      ]).with_value_style(CliValueStyle::Separate),
+    )
+    .build()
+  assert_eq(cfg.get_int("port"), -1L)
+  assert_eq(cfg.get_float("ratio"), -1.5)
+  assert_eq(cfg.get_float("scale"), -1000.0)
+}
+
+///|
+/// 默认只放行负数；其它 `-` 开头的参数仍是选项
+test "CliSource keeps other hyphen arguments as options" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--pattern", "-x"]).with_value_style(
+        CliValueStyle::Separate,
+      ),
+    )
+    .build()
+  assert_true(cfg.get_bool("pattern"))
+  assert_eq(cfg.origins().length(), 1)
+}
+
+///|
+/// 没登记的长选项在 `Separate` 下也把负数当值
+test "CliSource gives an unregistered long option a negative value" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--debug", "-1"]).with_value_style(
+        CliValueStyle::Separate,
+      ),
+    )
+    .build()
+  assert_eq(cfg.get_int("debug"), -1L)
+}
+
+///|
+/// 登记成长开关后不取值，后面的参数还是下一个选项
+test "CliSource long flags do not swallow the next option" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--debug", "--other"])
+      .with_value_style(CliValueStyle::Separate)
+      .with_long_flag("debug", "debug"),
+    )
+    .build()
+  assert_true(cfg.get_bool("debug"))
+  assert_true(cfg.get_bool("other"))
+}
+
+///|
+/// `Never` 恢复旧边界：负数也当选项，不会被前一项吃掉
+test "CliSource can turn negative values back into options" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--port", "-1"])
+      .with_value_style(CliValueStyle::Separate)
+      .with_hyphen_values(CliHyphenValues::Never),
+    )
+    .build()
+  assert_true(cfg.get_bool("port"))
+  assert_eq(cfg.origins().length(), 1)
+}
+
+///|
+/// `Always` 让任意 `-` 开头的参数当值，`--` 仍然是终止符
+test "CliSource can take any hyphen value" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["--pattern", "-x.y", "--", "-z"])
+      .with_value_style(CliValueStyle::Separate)
+      .with_hyphen_values(CliHyphenValues::Always),
+    )
+    .build()
+  assert_eq(cfg.get_string("pattern"), "-x.y")
+  assert_eq(cfg.origins().length(), 1)
+}
+
+///|
+/// 短选项的取值位置同样认负数
+test "CliSource reads negative numbers for short options" {
+  let cfg = Config::new()
+    .add(
+      CliSource::from_args(["-p", "-1"])
+      .with_short_option("p", "db.port")
+      .with_value_style(CliValueStyle::Separate),
+    )
+    .build()
+  assert_eq(cfg.get_int("db.port"), -1L)
 }
 
 ///|

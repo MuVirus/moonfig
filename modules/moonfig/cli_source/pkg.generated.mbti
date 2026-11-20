@@ -10,6 +10,15 @@ import {
 // Errors
 
 // Types and methods
+#derive(Eq)
+pub(all) enum CliHyphenValues {
+  Never
+  NegativeNumbers
+  Always
+}
+pub fn CliHyphenValues::equal(Self, Self) -> Bool
+pub fn CliHyphenValues::not_equal(Self, Self) -> Bool
+
 pub struct CliSource {
   args : Array[String]
   // private fields
@@ -20,6 +29,7 @@ pub fn CliSource::kind(Self) -> @core.SourceKind
 pub fn CliSource::new() -> Self
 pub fn CliSource::raw_locator(Self) -> &@core.Locator?
 pub fn CliSource::with_array(Self, String) -> Self
+pub fn CliSource::with_hyphen_values(Self, CliHyphenValues) -> Self
 pub fn CliSource::with_long_flag(Self, String, String) -> Self
 pub fn CliSource::with_positional(Self, Int32, String) -> Self
 pub fn CliSource::with_short_flag(Self, String, String) -> Self

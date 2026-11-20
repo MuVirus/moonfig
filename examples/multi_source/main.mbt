@@ -7,7 +7,8 @@
 ///
 /// 1. 内存默认值
 /// 2. 配置文件 `examples/multi_source/config/app.json`
-/// 3. 环境变量 `APP_DB_PORT` / `APP_DB_PASSWORD`
+/// 3. 环境变量 `APP_DB_PORT` / `APP_DB_PASSWORD`（用 `with_separator("_")` 让
+///    下划线分层，落到 `db.port` / `db.password`）
 /// 4. 命令行参数 `--log-level=debug`
 ///
 /// 环境变量这一层为了演示可复现，由程序自己设上；真实程序直接用进程里已有的
@@ -60,7 +61,7 @@ fn build_config() -> Config raise {
   .add(
     FileSource::new("examples/multi_source/config/app.json", JsonFormat::new()),
   )
-  .add(EnvSource::new("APP_"))
+  .add(EnvSource::new("APP_").with_separator("_"))
   .add(CliSource::new())
   .build()
 }

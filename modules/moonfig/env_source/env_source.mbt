@@ -3,10 +3,14 @@
 ///
 /// **前缀决定读谁。** 只有以 `prefix` 开头的变量会被读进来，其余忽略；
 /// 前缀本身不参与键名。`EnvSource::new("APP_")` 读 `APP_DB_PORT`，
-/// 键是 `db.port`；`EnvSource::all()` 读全部变量。
+/// 键是 `db_port`；要 `db.port` 就加 `with_separator("_")`。`EnvSource::all()`
+/// 读全部变量。
 ///
-/// **下划线和点都算层级。** `APP_DB_PORT` → `db.port`，`APP_DB.PORT` 也一样。
-/// 键名统一转小写，因为环境变量习惯全大写，而路径习惯小写。
+/// **默认只有点算层级。** `APP_DB_PORT` → `db_port`，`APP_DB.PORT` → `db.port`。
+/// 下划线要当层级得显式开：`with_separator("_")` 后 `APP_DB_PORT` → `db.port`。
+/// 用 `with_separator("__")` 时双下划线分层、单个下划线留在键名里：
+/// `APP_DB__HOST_NAME` → `db.host_name`。键名统一转小写，因为环境变量习惯
+/// 全大写，而路径习惯小写。
 ///
 /// **值按字面猜类型。** `"true"` / `"false"` 是布尔，整数按 `Int64` 解析
 /// （超出范围报错），带小数点或指数的是浮点，其余是字符串。空值是空字符串。
@@ -16,9 +20,11 @@
 /// 两个变量只差大小写时同样报错。
 ///
 /// 整层共用一个 site：`kind` 是 `Env`，`describe` 按路径查回具体变量名，
-/// 所以 `origin_of("db.port")` 能指出是 `APP_DB_PORT`，而 `Value` 上不存这个字符串。
+/// 所以用 `with_separator("_")` 时 `origin_of("db.port")` 能指出是 `APP_DB_PORT`，
+/// 而 `Value` 上不存这个字符串。
 pub struct EnvSource {
   prefix : String
+  separator : String
 }
 
 ///|
@@ -63,13 +69,39 @@ impl @config.OriginSite for EnvSite with fn describe(
 /// }
 /// ```
 pub fn EnvSource::new(prefix : String) -> EnvSource {
-  { prefix, }
+  { prefix, separator: "", }
 }
 
 ///|
 /// 读全部环境变量
 pub fn EnvSource::all() -> EnvSource {
-  { prefix: "", }
+  { prefix: "", separator: "", }
+}
+
+///|
+/// 选环境变量名里的层级分隔符；默认空串，只按 `.` 分层
+///
+/// 分隔符按字面匹配，可以多字符；`.` 永远分层。`with_separator("_")` 让
+/// `APP_DB_PORT` → `db.port`；`with_separator("__")` 让
+/// `APP_DB__HOST_NAME` → `db.host_name`，单个 `_` 留在键名里。
+///
+/// Example:
+///
+/// ```mbt check
+/// test {
+///   @env.set_env_var("MOONFIG_SEP_DB_PORT", "6543")
+///   let cfg = @config.Config::new()
+///     .add(@env_source.EnvSource::new("MOONFIG_SEP_").with_separator("_"))
+///     .build()
+///   assert_eq(cfg.get_int("db.port"), 6543L)
+///   @env.unset_env_var("MOONFIG_SEP_DB_PORT")
+/// }
+/// ```
+pub fn EnvSource::with_separator(
+  self : EnvSource,
+  separator : String,
+) -> EnvSource {
+  { prefix: self.prefix, separator, }
 }
 
 ///|
@@ -91,7 +123,7 @@ pub impl @config.Source for EnvSource with fn collect(self : EnvSource) -> @conf
   let seen : Map[String, String] = Map([])
   for name in names {
     let key = name.strip_prefix(self.prefix).unwrap()
-    let path = key_path(key, name)
+    let path = key_path(key, name, self.separator)
     let raw = vars.get(name).unwrap()
     let value = @config.Value::from_literal(raw) catch {
       @config.ConfigError::ParseError(message) =>
@@ -117,21 +149,25 @@ pub impl @config.Source for EnvSource with fn kind(_ : EnvSource) -> @config.Sou
 pub extend EnvSource with @config.Source::{collect, kind, raw_locator}
 
 ///|
-/// 变量名 → 层级路径：去掉前缀后按 `_` 和 `.` 拆层，统一转小写。
+/// 变量名 → 层级路径：去掉前缀后按 `.` 和给定分隔符拆层，统一转小写。
+///
+/// `.` 始终分层；分隔符为空时不再按别的字符拆，所以 `APP_DB_PORT` 是一个键。
+/// 先按 `.` 拆，再按分隔符拆，两个方向都从左到右、不重叠。
 fn key_path(
   key : StringView,
   name : String,
+  separator : String,
 ) -> Array[String] raise @config.ConfigError {
   let path : Array[String] = []
-  let segment = StringBuilder()
-  for c in key {
-    if c == '_' || c == '.' {
-      push_segment(path, segment, name)
+  for part in key.split(".") {
+    if separator.length() == 0 {
+      push_segment(path, part, name)
     } else {
-      segment.write_char(c.to_ascii_lowercase())
+      for piece in part.split(separator.clamped_view()) {
+        push_segment(path, piece, name)
+      }
     }
   }
-  push_segment(path, segment, name)
   path
 }
 
@@ -139,17 +175,19 @@ fn key_path(
 /// 一段键名收进路径；空的层说明变量名写坏了
 fn push_segment(
   path : Array[String],
-  segment : StringBuilder,
+  segment : StringView,
   name : String,
 ) -> Unit raise @config.ConfigError {
-  let text = segment.to_string()
-  if text.length() == 0 {
+  if segment.length() == 0 {
     raise @config.ConfigError::ParseError(
       "environment variable \{name}: key has an empty segment",
     )
   }
-  path.push(text)
-  segment.reset()
+  let text = StringBuilder()
+  for c in segment {
+    text.write_char(c.to_ascii_lowercase())
+  }
+  path.push(text.to_string())
 }
 
 ///|

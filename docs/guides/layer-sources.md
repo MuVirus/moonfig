@@ -16,7 +16,7 @@ Layer defaults, configuration files, environment variables and the command line 
 - File sources need a format: `FileSource::new(path, format)`; to choose automatically by extension or content, use
   `FileSource::auto(path, detector)`
 - Environment variable sources need a prefix, such as `APP_`
-- Command-line sources recognize only `--key=value` by default; for space separation switch explicitly to `Separate`
+- Command-line sources recognize only `--key=value` by default; for space separation switch explicitly to `Separate` (negative numbers work directly, such as `--port -1`)
 
 ## Completion criteria
 
@@ -28,7 +28,8 @@ Layer defaults, configuration files, environment variables and the command line 
 
 1. Put the defaults first: `MemorySource` treats a `Value` tree in memory as one layer, so every key has a usable value.
 2. Add the file layer: `FileSource::new("config/app.json", JsonFormat::new())`.
-3. Add the environment variable layer: `EnvSource::new("APP_")`; `APP_DB_PORT` lands on `db.port`.
+3. Add the environment variable layer: `EnvSource::new("APP_")`; `.` always nests, so `APP_DB.HOST` lands on `db.host`. Add
+   `.with_separator("_")` to make `APP_DB_HOST` land on `db.host`; without it, `APP_DB_HOST` stays the flat key `db_host`.
 4. Add the command-line layer: `CliSource::new()`; `--log-level=debug` lands on `log.level`. Short options and arrays
    must be registered first, and so must a boolean long option with a positional argument behind it in the `Separate`
    style (`with_long_flag`); for the style, see [cli-args.md](../design/cli-args.md).
@@ -42,7 +43,7 @@ let cfg = Config::new()
     "log": Value::table({ "level": Value::str("info") }),
   })))
   .add(FileSource::new("config/app.json", JsonFormat::new()))
-  .add(EnvSource::new("APP_"))
+  .add(EnvSource::new("APP_").with_separator("_"))
   .add(CliSource::new())
   .build()
 
@@ -56,7 +57,8 @@ cfg.origin_of("db.port")        // Some(env:APP_DB_PORT)
   `.with_rule(MergeRule::FirstWins)`; to order by source type use `MergeRule::ByKind`, writing the array from highest to lowest
   priority (such as `[Env, File]`).
 - Nested tables merge key by key, arrays are replaced as a whole; arrays do not merge element by element.
-- Environment variables treat `_` and `.` as hierarchy; the command line treats `-` and `.` as hierarchy; keys are converted to lowercase uniformly.
+- Environment variables split only on `.` by default; add `.with_separator("_")` (or `"__"` to keep single underscores literal) for
+  nested keys. The command line treats `-` and `.` as hierarchy; keys are converted to lowercase uniformly.
 - Environment variables and the command line have no type declarations, so content is guessed literally: `6543` is `Int`, `true` is `Bool`,
   everything else is a string.
 - The origin of a table node is "the last layer that touched it"; only leaf paths are accurate.

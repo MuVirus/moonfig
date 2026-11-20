@@ -80,6 +80,7 @@ feature.debug  memory
 
 ## 边界
 
+- 环境变量默认只按 `.` 分层；示例用 `.with_separator("_")` 让 `APP_DB_PORT` 落到 `db.port`
 - 环境变量全是字符串，类型推断在 `EnvSource` 这一层做完，不能拖到按结构体取值时
 - 文件不存在报 `IoError` 并指出文件路径，内容坏了报 `ParseError`
 - 同一层加两次，后加覆盖先加

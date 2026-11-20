@@ -17,7 +17,7 @@
 - 文件来源要有格式：`FileSource::new(path, format)`；想按后缀或内容自动选择，用
   `FileSource::auto(path, detector)`
 - 环境变量来源要定前缀，比如 `APP_`
-- 命令行来源默认只认 `--key=value`；空格分隔要显式切到 `Separate`
+- 命令行来源默认只认 `--key=value`；空格分隔要显式切到 `Separate`（负数可以直接写，如 `--port -1`）
 
 ## 完成标准
 
@@ -29,7 +29,9 @@
 
 1. 先放默认值：`MemorySource` 把内存里的一棵 `Value` 当一层，所有键都有可用值。
 2. 加文件层：`FileSource::new("config/app.json", JsonFormat::new())`。
-3. 加环境变量层：`EnvSource::new("APP_")`；`APP_DB_PORT` 落到 `db.port`。
+3. 加环境变量层：`EnvSource::new("APP_")`；`.` 始终分层，所以 `APP_DB.HOST` 落到 `db.host`。
+   要让 `APP_DB_HOST` 落到 `db.host`，再加 `.with_separator("_")`；不加的话
+   `APP_DB_HOST` 是平铺的 `db_host`。
 4. 加命令行层：`CliSource::new()`；`--log-level=debug` 落到 `log.level`。短选项和数组
    要先登记；`Separate` 风格下后面跟着位置参数的长选项布尔开关也要登记
    （`with_long_flag`）。风格见 [cli-args.md](../design/cli-args.zh.md)。
@@ -43,7 +45,7 @@ let cfg = Config::new()
     "log": Value::table({ "level": Value::str("info") }),
   })))
   .add(FileSource::new("config/app.json", JsonFormat::new()))
-  .add(EnvSource::new("APP_"))
+  .add(EnvSource::new("APP_").with_separator("_"))
   .add(CliSource::new())
   .build()
 
@@ -57,7 +59,8 @@ cfg.origin_of("db.port")        // Some(env:APP_DB_PORT)
   `.with_rule(MergeRule::FirstWins)`，按来源类型排序用 `MergeRule::ByKind`，数组里按
   优先级从高到低写（如 `[Env, File]`）。
 - 嵌套表逐键合并，数组整体替换；数组不会按元素合并。
-- 环境变量把 `_` 和 `.` 当层级；命令行把 `-` 和 `.` 当层级；键统一转小写。
+- 环境变量默认只按 `.` 分层；要让下划线也分层，加 `.with_separator("_")`（想保留单个
+  下划线就用 `"__"`）。命令行把 `-` 和 `.` 当层级；键统一转小写。
 - 环境变量和命令行没有类型声明，内容按字面猜：`6543` 是 `Int`，`true` 是 `Bool`，
   其余是字符串。
 - 表节点的来源是「最后碰它的那层」，只有叶子路径准确。

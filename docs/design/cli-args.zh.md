@@ -17,6 +17,9 @@
 | `-p=5432 -vq` | `Equals` + 登记 `p→db.port`、`v→verbose`、`q→quiet` | `db.port = 5432`、`verbose = true`、`quiet = true` |
 | `--debug simulate` | `Separate`，`debug` 没登记 | `debug = "simulate"`；`simulate` 不算位置参数 |
 | `--debug simulate` | `Separate` + `with_long_flag("debug", "debug")`、`with_positional(0, "command")` | `debug = true`、`command = "simulate"` |
+| `--port -1` | `Separate`（默认） | `port = -1` |
+| `--pattern -x` | `Separate` | `pattern = true`；`-x` 不进入配置 |
+| `--pattern -x` | `Separate` + `with_hyphen_values(Always)` | `pattern = "-x"` |
 | `--tag a --tag b` | `Separate` + `with_array("tag")` | `tag = ["a", "b"]` |
 | `--a=1 --a.b=2` | `Equals`（默认） | `ParseError`，不产出配置 |
 
@@ -36,12 +39,17 @@
 **为什么不做「两种都认」**：同一份 argv 里还有程序自己的参数，光看风格无法判断
 `--flag positional` 里的 `positional` 是值还是程序参数。风格固定后，切分是确定的，配置键不会
 悄悄吃掉位置参数。`Equals` 下的 `--key value` 只能解释成「开关 + 位置参数」；`Separate` 下裸
-`--key` 仍会把下一个参数当值，所以后面跟着位置参数的布尔开关要用 `with_long_flag` 声明（见后）。
-裸 `--key` 本身永远不算错误。
+`--key` 仍会把下一个参数当值（只要它不像选项），所以后面跟着位置参数的布尔开关要用
+`with_long_flag` 声明（见后）。裸 `--key` 本身永远不算错误。
 
-**`Separate` 的边界**：以 `-` 开头的值会被当成下一个选项，负数请换 `Equals` 用 `--key=-1`；
-单独一个 `-` 仍可当值。`--` 之后全部是位置参数。这个风格适合整条命令行都当配置的场景：
-程序自己的 `--key=value` 也会报风格错误，可以放到 `--` 之后，或改用 `Equals`。
+**`Separate` 的边界**：下一个参数不以 `-` 开头，或长得像负数（`-1`、`-1.5`、`-1e3`）时，它是值。
+这就是默认的 `with_hyphen_values(CliHyphenValues::NegativeNumbers)`。单独一个 `-` 始终是值，
+`--` 始终终止选项解析。要让任意 `-` 开头的字符串当值（`--pattern -x`），用
+`with_hyphen_values(Always)`，代价是后面的选项也会被吃掉（`--key --other` 得到
+`key = "--other"`）。要恢复旧的严格边界，用 `Never`，这时负数只能走 `Equals` 写成 `--key=-1`。
+
+这个风格适合整条命令行都当配置的场景：程序自己的 `--key=value` 也会报风格错误，可以放到
+`--` 之后，或改用 `Equals`。`--` 之后全部是位置参数。
 
 ## 位置参数按声明映射
 
@@ -76,7 +84,8 @@ CLI 要用 `Separate`。
 
 `with_short_option` 登记收值的短选项，`with_short_flag` 登记布尔开关。没登记的短选项当程序
 参数忽略。长选项不需要登记：`--key` 一律当配置参数，裸写就是开关——但 `Separate` 下它会把
-下一个参数当值。`with_long_flag` 声明长选项布尔开关，两种风格下都不取值，也可以落到别的路径；
+下一个参数当值（只要它不像选项）。`with_long_flag` 声明长选项布尔开关，两种风格下都不取值，
+也可以落到别的路径；
 登记过的开关写 `--key=value` 报错，要 false 写 `--no-key`。
 
 取值写法跟着当前风格走，不再额外接受 `-p5432` 或另一种写法：一种风格只有一种切分方式。

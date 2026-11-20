@@ -119,6 +119,8 @@ db.port = 6543
 | 环境变量 | `EnvSource::new("APP_")` |
 | 命令行 | `CliSource::new()` |
 
+环境变量默认只按 `.` 分层；要让 `APP_DB_PORT` 变成 `db.port`，加 `.with_separator("_")`。
+
 后加的来源覆盖同名键；嵌套配置逐层合并，数组整体替换。默认后加者优先，也可以改成先加者优先、按来源类型排序，或传自定义函数。
 
 完整示例：[examples/multi_source](examples/multi_source/README.md)。分层步骤和常见坑见

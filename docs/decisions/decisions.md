@@ -20,7 +20,7 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #4 | Boundaries of JSON numbers | active | design/extract.md |
 | #5 | Choosing a CBOR library | active | design/sources.md |
 | #6 | Origin tracking and merge rules | active | design/design.md, design/sources.md, guides/layer-sources.md |
-| #7 | The three sources: file, environment variables, command line | active | design/sources.md, design/cli-args.md, guides/layer-sources.md |
+| #7 | The three sources: file, environment variables, command line | partially superseded (#18 changes the environment variable default separator) | design/sources.md, design/cli-args.md, guides/layer-sources.md |
 | #8 | `String::compare` compares length first | active | none (implementation only) |
 | #9 | Validation | active | design/validate.md |
 | #10 | Float widening and snapshots with origins | active | design/design.md, design/sources.md |
@@ -29,7 +29,9 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #13 | Default order of extraction paths | active (supersedes #11's default order) | design/from_config.md, design/extract.md, guides/choose-extraction.md |
 | #14 | `derive(FromJson)` extraction is experimental | active | design/extract.md, design/from_config.md, guides/choose-extraction.md |
 | #15 | Third-party parsers live in separate modules, not packages | active (supersedes #12's package placement) | design/sources.md, design/extract.md, plan/roadmap.md |
-| #16 | Long switches may be registered | active | design/cli-args.md, guides/layer-sources.md |
+| #16 | Long switches may be registered | partially superseded (#17 changes the value boundary) | design/cli-args.md, guides/layer-sources.md |
+| #17 | `Separate` takes negative numbers as values | active (supersedes #16's value boundary) | design/cli-args.md, guides/layer-sources.md |
+| #18 | Environment variable separators are opt-in | active (supersedes #7's environment variable separator) | design/sources.md, guides/layer-sources.md |
 
 ## 1. Package names cannot collide with MoonBit standard library package names
 
@@ -172,7 +174,7 @@ Status: active | Affects: design/design.md, design/sources.md, guides/layer-sour
 
 ## 7. The three sources: file, environment variables, command line
 
-Status: active | Affects: design/sources.md, design/cli-args.md, guides/layer-sources.md
+Status: partially superseded (#18 changes the environment variable default separator) | Affects: design/sources.md, design/cli-args.md, guides/layer-sources.md
 
 > **Details settled during the 2026-10 implementation**
 >
@@ -223,6 +225,9 @@ Status: active | Affects: design/sources.md, design/cli-args.md, guides/layer-so
 >   tracking.
 > - The new dependency `moonbitlang/x` is written into `moon.mod` by hand rather
 >   than via `moon add` (this repository's convention).
+>
+> 2026-11 #18 changes the environment variable default: only `.` splits unless
+> `with_separator` adds another separator.
 
 ## 8. `String::compare` compares length first
 
@@ -428,7 +433,7 @@ Status: active (supersedes #12's package placement) | Affects: design/sources.md
 
 ## 16. Long switches may be registered
 
-Status: active | Affects: design/cli-args.md, guides/layer-sources.md
+Status: partially superseded (#17 changes the value boundary) | Affects: design/cli-args.md, guides/layer-sources.md
 
 > **Measured 2026-11: under `Separate`, `--debug simulate` sets
 > `debug = "simulate"` and `simulate` never reaches the positional table.**
@@ -446,3 +451,56 @@ Status: active | Affects: design/cli-args.md, guides/layer-sources.md
 > registry, because each style already says where the value is. Registration
 > matches the whole name before the `no-` prefix, so a flag literally named
 > `no-cache` shadows the negation of `cache`.
+>
+> 2026-11 #17 narrows the boundary: under `Separate`, an argument starting with
+> `-` is a value only when it looks like a negative number.
+
+## 17. `Separate` takes negative numbers as values
+
+Status: active (supersedes #16's value boundary) | Affects: design/cli-args.md, guides/layer-sources.md
+
+> **Measured 2026-11: under `Separate`, `--port -1` used to give
+> `port = true` and drop `-1` without an error.** The next argument counted as a
+> value only when it did not start with `-`, so every negative number looked like
+> another option; `-1` then went down the short-option path and vanished because
+> `1` was not registered. That is silent, and worse than a `ParseError`.
+>
+> Other parsers hit the same ambiguity. clap exposes it per argument as
+> `allow_negative_numbers` / `allow_hyphen_values`; Python `argparse` treats `-1`
+> as a positional when it looks like a negative number; Go `flag` takes the next
+> token unconditionally. The common default is "negative numbers are values,
+> other hyphen strings are options".
+>
+> Conclusion: `CliHyphenValues::{Never, NegativeNumbers, Always}`, default
+> `NegativeNumbers`, switched with `with_hyphen_values`. A lone `-` is always a
+> value and `--` is always the terminator, whatever the policy. `Always` restores
+> "the value is the next token" for `--pattern -x`, at the documented cost of
+> swallowing the next option; `Never` restores the old boundary.
+>
+> Cost: the check is the shape "`-` followed by a digit", not a full number
+> parse, so `-1abc` is also taken as a value. A registered flag still leaves a
+> following `-1` to the short-option path, where unregistered names stay ignored;
+> this does not turn unknown short options into errors.
+
+## 18. Environment variable separators are opt-in
+
+Status: active (supersedes #7's environment variable separator) | Affects: design/sources.md, guides/layer-sources.md
+
+> **2026-11: `EnvSource` used to split on both `_` and `.` by default.** That made
+> `APP_DB_PORT` → `db.port`, but it also made a literal `_` impossible and turned
+> every flat name such as `APP_LOG_LEVEL` into a nested path. config-rs and
+> figment both default to no splitting (config-rs: `separator` defaults to no
+> replacement; figment: no split unless `.split(...)`); `_` nesting is opt-in in
+> both.
+>
+> Conclusion: `.` always splits; `with_separator` adds one literal separator,
+> default `""`. `with_separator("_")` gives the old `APP_DB_PORT` → `db.port`;
+> `with_separator("__")` splits on double underscores and keeps single `_` in the
+> key (`APP_DB__HOST_NAME` → `db.host_name`). Multi-character separators match
+> literally, left to right, non-overlapping. Conflict detection, `EnvSite` origin
+> labels and strict `from_literal` parsing are unchanged.
+>
+> Cost: `APP_DB_PORT` is now the flat key `db_port` unless the source opts in.
+> Code that relied on `_` nesting must add `.with_separator("_")`. This is a
+> breaking default change, so it needs a release note; `with_separator("__")` is
+> the recommended mode when keys contain underscores.

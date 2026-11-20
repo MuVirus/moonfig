@@ -22,7 +22,24 @@ fn clear_vars(names : Array[String]) -> Unit {
 }
 
 ///|
-/// 前缀过滤、下划线变层级、字面量猜类型：四件事一起验
+/// 默认只按 `.` 分层，下划线留在键名里
+test "EnvSource keeps underscores flat by default" {
+  set_vars([
+    ("MOONFIG_FLAT_DB_PORT", "6543"),
+    ("MOONFIG_FLAT_DB.HOST", "localhost"),
+    ("MOONFIG_FLAT_DEBUG", "true"),
+  ])
+  let cfg = Config::new().add(EnvSource::new("MOONFIG_FLAT_")).build()
+  assert_eq(cfg.get_int("db_port"), 6543L)
+  assert_eq(cfg.get_string("db.host"), "localhost")
+  assert_true(cfg.get_bool("debug"))
+  clear_vars([
+    "MOONFIG_FLAT_DB_PORT", "MOONFIG_FLAT_DB.HOST", "MOONFIG_FLAT_DEBUG",
+  ])
+}
+
+///|
+/// 前缀过滤、下划线按需变层级、字面量猜类型：四件事一起验
 test "EnvSource reads prefixed variables as nested values" {
   set_vars([
     ("MOONFIG_ENV_DB_HOST", "localhost"),
@@ -32,7 +49,9 @@ test "EnvSource reads prefixed variables as nested values" {
     ("MOONFIG_ENV_EMPTY", ""),
     ("MOONFIG_OTHER", "ignored"),
   ])
-  let cfg = Config::new().add(EnvSource::new("MOONFIG_ENV_")).build()
+  let cfg = Config::new()
+    .add(EnvSource::new("MOONFIG_ENV_").with_separator("_"))
+    .build()
   assert_eq(cfg.get_string("db.host"), "localhost")
   assert_eq(cfg.get_int("db.port"), 6543L)
   assert_true(cfg.get_bool("debug"))
@@ -53,12 +72,23 @@ test "EnvSource reads prefixed variables as nested values" {
 }
 
 ///|
-/// 点号也当层级；键名统一转小写
+/// 点号始终当层级；键名统一转小写
 test "EnvSource splits on dots and lowercases names" {
   set_vars([("MOONFIG_DOT_LOG.LEVEL", "debug")])
   let cfg = Config::new().add(EnvSource::new("MOONFIG_DOT_")).build()
   assert_eq(cfg.get_string("log.level"), "debug")
   clear_vars(["MOONFIG_DOT_LOG.LEVEL"])
+}
+
+///|
+/// `__` 当分隔符时，单个下划线留在键名里
+test "EnvSource keeps single underscores with a double separator" {
+  set_vars([("MOONFIG_DOUBLE_DB__HOST_NAME", "localhost")])
+  let cfg = Config::new()
+    .add(EnvSource::new("MOONFIG_DOUBLE_").with_separator("__"))
+    .build()
+  assert_eq(cfg.get_string("db.host_name"), "localhost")
+  clear_vars(["MOONFIG_DOUBLE_DB__HOST_NAME"])
 }
 
 ///|
@@ -68,7 +98,9 @@ test "EnvSource labels leaves with the variable name" {
     ("MOONFIG_ORIGIN_DB_PORT", "6543"),
     ("MOONFIG_ORIGIN_DB_HOST", "localhost"),
   ])
-  let cfg = Config::new().add(EnvSource::new("MOONFIG_ORIGIN_")).build()
+  let cfg = Config::new()
+    .add(EnvSource::new("MOONFIG_ORIGIN_").with_separator("_"))
+    .build()
   let port = cfg.origin_of("db.port").unwrap()
   assert_eq(port.kind(), SourceKind::Env)
   assert_eq(port.label(), "env:MOONFIG_ORIGIN_DB_PORT")
@@ -109,7 +141,11 @@ test "EnvSource reads negative integers" {
 test "EnvSource reports a scalar shadowing a branch" {
   set_vars([("MOONFIG_CLASH_DB", "1"), ("MOONFIG_CLASH_DB_PORT", "2")])
   let message = try {
-    ignore(Config::new().add(EnvSource::new("MOONFIG_CLASH_")).build())
+    ignore(
+      Config::new()
+      .add(EnvSource::new("MOONFIG_CLASH_").with_separator("_"))
+      .build(),
+    )
     "no error"
   } catch {
     ConfigError::ParseError(message) => message
@@ -144,7 +180,7 @@ test "EnvSource rejects malformed names" {
   assert_eq(cfg.origins().length(), 0)
   clear_vars(["MOONFIG_BAD_"])
 
-  set_vars([("MOONFIG_BAD2_A__B", "1")])
+  set_vars([("MOONFIG_BAD2_A..B", "1")])
   let message = try {
     ignore(Config::new().add(EnvSource::new("MOONFIG_BAD2_")).build())
     "no error"
@@ -152,6 +188,25 @@ test "EnvSource rejects malformed names" {
     ConfigError::ParseError(message) => message
     e => e.to_string()
   }
-  assert_true(message.contains("MOONFIG_BAD2_A__B"))
-  clear_vars(["MOONFIG_BAD2_A__B"])
+  assert_true(message.contains("MOONFIG_BAD2_A..B"))
+  clear_vars(["MOONFIG_BAD2_A..B"])
+}
+
+///|
+/// 用单个 `_` 分层时，连续两个 `_` 是空的一层
+test "EnvSource rejects an empty underscore segment" {
+  set_vars([("MOONFIG_EMPTY_A__B", "1")])
+  let message = try {
+    ignore(
+      Config::new()
+      .add(EnvSource::new("MOONFIG_EMPTY_").with_separator("_"))
+      .build(),
+    )
+    "no error"
+  } catch {
+    ConfigError::ParseError(message) => message
+    e => e.to_string()
+  }
+  assert_true(message.contains("MOONFIG_EMPTY_A__B"))
+  clear_vars(["MOONFIG_EMPTY_A__B"])
 }

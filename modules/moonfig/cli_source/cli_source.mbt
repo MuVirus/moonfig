@@ -30,8 +30,9 @@
 ///
 /// **值按字面猜类型**，规则和环境变量相同：`"true"` / `"false"` 是布尔，
 /// 整数按 `Int64` 解析（超出范围报错），带小数点或指数的是浮点，其余是字符串。
-/// `Separate` 下以 `-` 开头的值（比如负数）会被当成下一个选项，要写这种值请换回
-/// `Equals` 风格用 `--key=-1`；单独一个 `-` 仍可当值。
+/// `Separate` 下下一个参数算不算值由 `with_hyphen_values` 决定：默认负数
+/// （`-1`、`-1.5`、`-1e3`）算值，其它 `-` 开头的不算；单独一个 `-` 始终算值，
+/// `--` 始终是终止符。要放任意 `-` 开头的字符串，用 `Always`。
 ///
 /// **标量和层级互相挡路时报 `ParseError`**（`--a=1 --a.b=2`、`--a.b=1 --a=2`），
 /// 不静默丢掉前一个值；数组声明和层级撞车时同样报错。
@@ -47,6 +48,7 @@
 pub struct CliSource {
   args : Array[String]
   priv value_style : CliValueStyle
+  priv hyphen_values : CliHyphenValues
   priv shorts : Map[String, CliShort]
   priv longs : Map[String, String]
   priv arrays : Map[String, Unit]
@@ -66,6 +68,24 @@ pub(all) enum CliValueStyle {
 
 ///|
 pub extend CliValueStyle with Eq::{not_equal, equal}
+
+///|
+/// `Separate` 风格下，以 `-` 开头的下一个参数能不能当值。
+///
+/// 只影响取值位置；选项本身（`--key`、`-p`）的识别不变。单独一个 `-` 在任何
+/// 策略下都算值，`--` 在任何策略下都是终止符。
+#derive(Eq)
+pub(all) enum CliHyphenValues {
+  /// 一律不当值：`--key -1` 里 `-1` 是下一个选项
+  Never
+  /// 像负数才当值：`-1`、`-1.5`、`-1e3`（默认）
+  NegativeNumbers
+  /// 任意 `-` 开头都当值（`--` 除外），适合 `--pattern -x`
+  Always
+}
+
+///|
+pub extend CliHyphenValues with Eq::{not_equal, equal}
 
 ///|
 /// 一个登记过的短选项：落到哪个配置路径、收不收值。
@@ -130,6 +150,7 @@ pub fn CliSource::from_args(
   {
     args,
     value_style: CliValueStyle::Equals,
+    hyphen_values: CliHyphenValues::NegativeNumbers,
     shorts: Map([]),
     longs: Map([]),
     arrays: Map([]),
@@ -166,6 +187,43 @@ pub fn CliSource::with_value_style(
   {
     args: self.args,
     value_style: style,
+    hyphen_values: self.hyphen_values,
+    shorts: self.shorts,
+    longs: self.longs,
+    arrays: self.arrays,
+    positionals: self.positionals,
+    program_name: self.program_name,
+  }
+}
+
+///|
+/// 选 `Separate` 下「以 `-` 开头的下一个参数算不算值」；默认 `NegativeNumbers`
+///
+/// 只影响取值位置：`--key -1` 里的 `-1` 算不算 `key` 的值。`Equals` 风格不
+/// 调用这条规则，值一律写在 `=` 后面；`--` 始终是终止符，任何策略下都不当值。
+///
+/// Example:
+///
+/// ```mbt check
+/// test {
+///   let cfg = @config.Config::new()
+///     .add(
+///       @cli_source.CliSource::from_args(["--pattern", "-x"])
+///       .with_value_style(@cli_source.CliValueStyle::Separate)
+///       .with_hyphen_values(@cli_source.CliHyphenValues::Always),
+///     )
+///     .build()
+///   assert_eq(cfg.get_string("pattern"), "-x")
+/// }
+/// ```
+pub fn CliSource::with_hyphen_values(
+  self : CliSource,
+  policy : CliHyphenValues,
+) -> CliSource {
+  {
+    args: self.args,
+    value_style: self.value_style,
+    hyphen_values: policy,
     shorts: self.shorts,
     longs: self.longs,
     arrays: self.arrays,
@@ -572,13 +630,49 @@ fn parse_short(
 }
 
 ///|
-/// 后面的参数能不能当上一项的值：有、且不以 `-` 开头（`-` 单独一个也算值）
+/// 后面的参数能不能当上一项的值。
+///
+/// 有、且不以 `-` 开头时总能当值；`-` 单独一个也算值；`--` 永远留给终止符；
+/// 其余以 `-` 开头的按 `hyphen_values` 判断。
 fn next_is_value(source : CliSource, index : Int32) -> Bool {
   if index >= source.args.length() {
     return false
   }
   let next = source.args[index]
-  next == "-" || !next.has_prefix("-")
+  if next == "-" {
+    return true
+  }
+  if !next.has_prefix("-") {
+    return true
+  }
+  if next == "--" {
+    return false
+  }
+  match source.hyphen_values {
+    CliHyphenValues::Never => false
+    CliHyphenValues::Always => true
+    CliHyphenValues::NegativeNumbers => is_negative_number(next)
+  }
+}
+
+///|
+/// 像不像负数：`-` 后面紧跟一个数字。
+///
+/// 只卡形状，不调用 `from_literal`：判断边界时不该先解析一遍，也不该因为
+/// 整数溢出把「是数字」变成「不是值」。
+fn is_negative_number(text : StringView) -> Bool {
+  let mut seen_minus = false
+  for c in text {
+    if !seen_minus {
+      if c != '-' {
+        return false
+      }
+      seen_minus = true
+    } else {
+      return c >= '0' && c <= '9'
+    }
+  }
+  false
 }
 
 ///|

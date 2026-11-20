@@ -17,6 +17,9 @@ Type inference is shared with `EnvSource` through `Value::from_literal`, rules i
 | `-p=5432 -vq` | `Equals` + register `p→db.port`, `v→verbose`, `q→quiet` | `db.port = 5432`, `verbose = true`, `quiet = true` |
 | `--debug simulate` | `Separate`, `debug` not registered | `debug = "simulate"`; `simulate` is not a positional |
 | `--debug simulate` | `Separate` + `with_long_flag("debug", "debug")`, `with_positional(0, "command")` | `debug = true`, `command = "simulate"` |
+| `--port -1` | `Separate` (default) | `port = -1` |
+| `--pattern -x` | `Separate` | `pattern = true`; `-x` does not enter config |
+| `--pattern -x` | `Separate` + `with_hyphen_values(Always)` | `pattern = "-x"` |
 | `--tag a --tag b` | `Separate` + `with_array("tag")` | `tag = ["a", "b"]` |
 | `--a=1 --a.b=2` | `Equals` (default) | `ParseError`, no config produced |
 
@@ -35,12 +38,18 @@ They never both apply. Under `Separate`, writing `--key=value` raises `ParseErro
 
 **Why not accept both**: the same argv also carries the program's own arguments, and the style alone cannot tell whether `positional` in
 `--flag positional` is a value or a program argument. With the style fixed, splitting is deterministic and config keys cannot silently swallow positional
-arguments. Under `Equals`, `--key value` can only mean "switch + positional argument"; under `Separate` a bare `--key` still takes the next argument as its
-value, so a boolean that has a positional argument behind it is declared with `with_long_flag` (see below). A bare `--key` is never an error on its own.
+arguments. Under `Equals`, `--key value` can only mean "switch + positional argument"; under `Separate` a bare `--key` takes the next argument as its
+value when that argument is not option-like, so a boolean with a positional argument behind it is declared with `with_long_flag` (see below).
+A bare `--key` is never an error on its own.
 
-**`Separate` boundaries**: a value starting with `-` is taken as the next option, so use `Equals` with `--key=-1` for negative numbers;
-a lone `-` still works as a value. Everything after `--` is positional. This style suits the case where the whole command line is config:
-the program's own `--key=value` also raises a style error, so put it after `--`, or use `Equals`.
+**`Separate` boundaries**: the next argument is a value when it does not start with `-`, or when it looks like a negative number (`-1`,
+`-1.5`, `-1e3`). That is `with_hyphen_values(CliHyphenValues::NegativeNumbers)`, the default. A lone `-` is always a value, and `--` always
+ends option parsing. Use `with_hyphen_values(Always)` to accept any `-`-leading string (`--pattern -x`); the cost is that the next option is
+swallowed too (`--key --other` gives `key = "--other"`). Use `Never` for the old strict boundary, where a negative value has to go through
+`Equals` as `--key=-1`.
+
+This style suits the case where the whole command line is config: the program's own `--key=value` also raises a style error, so put it after
+`--`, or use `Equals`. Everything after `--` is positional.
 
 ## Positional arguments map by declaration
 
@@ -75,7 +84,7 @@ after `--`.
 
 `with_short_option` registers a short option that takes a value, `with_short_flag` registers a boolean switch. Unregistered short options are ignored as program
 arguments. Long options need no registry: `--key` is always a config argument, and bare it is a switch — except under `Separate`, where it takes the next
-argument as its value. `with_long_flag` declares a long boolean, so it never takes a value in either style and may land on another key; a registered switch
+argument as its value when that argument is not option-like. `with_long_flag` declares a long boolean, so it never takes a value in either style and may land on another key; a registered switch
 rejects `--key=value`, write `--no-key` for false.
 
 The value syntax follows the current style, and `-p5432` or the other syntax is not accepted additionally: one style has exactly one way to split.
