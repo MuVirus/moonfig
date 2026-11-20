@@ -53,6 +53,13 @@ pub fn Config::get_bytes(Self, String) -> Bytes raise ConfigError
 pub fn Config::get_float(Self, String) -> Double raise ConfigError
 pub fn Config::get_float_strict(Self, String) -> Double raise ConfigError
 pub fn Config::get_int(Self, String) -> Int64 raise ConfigError
+pub fn Config::get_opt_bool(Self, String) -> Bool? raise ConfigError
+pub fn Config::get_opt_bytes(Self, String) -> Bytes? raise ConfigError
+pub fn Config::get_opt_float(Self, String) -> Double? raise ConfigError
+pub fn Config::get_opt_int(Self, String) -> Int64? raise ConfigError
+pub fn Config::get_opt_int32(Self, String) -> Int32? raise ConfigError
+pub fn Config::get_opt_string(Self, String) -> String? raise ConfigError
+pub fn Config::get_opt_uint64(Self, String) -> UInt64? raise ConfigError
 pub fn Config::get_string(Self, String) -> String raise ConfigError
 pub fn[T : FromConfig] Config::get_struct(Self, String) -> T raise ConfigError
 pub fn[T : FromConfig + Validate] Config::get_struct_validated(Self, String) -> T raise ConfigError

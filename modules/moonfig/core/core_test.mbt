@@ -518,3 +518,70 @@ test "Value::from_literal reports integer overflow" {
   }
   assert_true(message.contains("Int64"))
 }
+
+///|
+/// 扁平可选取值：缺失或 `null` 都是 `None`，其余按各自类型读
+test "optional getters return None for missing or null keys" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({
+          "db": Value::table({ "port": Value::int(5432L) }),
+          "name": Value::str("app"),
+          "debug": Value::bool(true),
+          "ratio": Value::float(0.5),
+          "cert": Value::bytes(b"ab"),
+          "nulled": Value::null(),
+        }),
+      ),
+    )
+    .build()
+  assert_eq(cfg.get_opt_string("name"), Some("app"))
+  assert_eq(cfg.get_opt_bool("debug"), Some(true))
+  assert_eq(cfg.get_opt_int("db.port"), Some(5432L))
+  assert_eq(cfg.get_opt_int32("db.port"), Some(5432))
+  assert_eq(cfg.get_opt_uint64("db.port"), Some(5432UL))
+  assert_eq(cfg.get_opt_float("ratio"), Some(0.5))
+  assert_eq(cfg.get_opt_bytes("cert"), Some(b"ab"))
+  assert_eq(cfg.get_opt_string("missing"), None)
+  assert_eq(cfg.get_opt_int("nulled"), None)
+}
+
+///|
+/// 扁平可选取值仍守严格性：整数加宽浮点，类型不符和越界照常报错
+test "optional getters keep widening and range rules" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({
+          "count": Value::int(3L),
+          "text": Value::str("5432"),
+          "big": Value::int(3000000000L),
+          "negative": Value::int(-1L),
+        }),
+      ),
+    )
+    .build()
+  assert_eq(cfg.get_opt_float("count"), Some(3.0))
+  let wrong_type = try {
+    ignore(cfg.get_opt_int("text"))
+    "no error"
+  } catch {
+    e => e.to_string()
+  }
+  assert_eq(wrong_type, "key 'text': expected Int, got Str")
+  let int32 = try {
+    ignore(cfg.get_opt_int32("big"))
+    "no error"
+  } catch {
+    e => e.to_string()
+  }
+  assert_eq(int32, "parse error: key 'big' is out of range for Int32")
+  let uint64 = try {
+    ignore(cfg.get_opt_uint64("negative"))
+    "no error"
+  } catch {
+    e => e.to_string()
+  }
+  assert_eq(uint64, "parse error: key 'negative' is out of range for UInt64")
+}

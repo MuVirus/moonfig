@@ -67,10 +67,12 @@ cfg.get_int("db.port")           // Int64
 cfg.get_float("ratio")           // Double
 cfg.get_bool("debug")            // Bool
 cfg.get_bytes("cert")            // Bytes
+cfg.get_opt_float("timeout")     // Double? —— 缺失或 null 时是 None
 ```
 
 - 路径用点号展开：`"db.host"` → `Table{"db": Table{"host": ...}}`
-- key 不存在 → **报错，不返回默认值**（默认值应该由 `MemorySource` 提供，那才是它的职责）
+- `get_*` 缺 key → **报错，不返回默认值**（默认值应该由 `MemorySource` 提供，那才是它的职责）；`get_opt_*` 一族（`get_opt_string`、`get_opt_bool`、`get_opt_int`、`get_opt_int32`、`get_opt_uint64`、`get_opt_float`、`get_opt_bytes`）对缺失或 `null` 的键返回 `None`，类型不符或越界仍然报错
+- 只读几个键、不需要结构体时用扁平的 `get_*` / `get_opt_*`；要把整棵子树一次填进类型时用 `get_struct`，见 [from_config.md](from_config.zh.md)
 - `get_float` 默认把 `Int` 加宽成 `Double`，超出 2^53 时按浮点精度近似；`get_float_strict` 只接受 `Float`。反方向（`Float` → 整数）始终报错，不截断
 - `Config::snapshot()` 导出 `Array[Entry]`，每条是路径、值、来源；`origins()` 从同一套遍历里取来源。表节点递归，数组当叶子
 

@@ -69,10 +69,12 @@ cfg.get_int("db.port")           // Int64
 cfg.get_float("ratio")           // Double
 cfg.get_bool("debug")            // Bool
 cfg.get_bytes("cert")            // Bytes
+cfg.get_opt_float("timeout")     // Double? — None when missing or null
 ```
 
 - Paths expand with dots: `"db.host"` → `Table{"db": Table{"host": ...}}`
-- missing key → **error, no default value** (defaults should come from `MemorySource`; that is its job)
+- missing key → **error, no default value** (defaults should come from `MemorySource`; that is its job); the `get_opt_*` family (`get_opt_string`, `get_opt_bool`, `get_opt_int`, `get_opt_int32`, `get_opt_uint64`, `get_opt_float`, `get_opt_bytes`) returns `None` for a missing or `null` key, and still errors when the type is wrong or the value is out of range
+- read a few keys without a struct with the flat `get_*` / `get_opt_*`; to fill a whole subtree into a type at once, use `get_struct` (see [from_config.md](from_config.md))
 - `get_float` widens `Int` to `Double` by default, approximating by floating-point precision beyond 2^53; `get_float_strict` accepts only `Float`. The reverse (`Float` → integer) always errors, never truncates
 - `Config::snapshot()` exports `Array[Entry]`, each entry a path, value and origin; `origins()` takes origins from the same traversal. Table nodes recurse, arrays are leaves
 

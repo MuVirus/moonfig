@@ -201,6 +201,75 @@ pub fn Config::get_bytes(
 }
 
 ///|
+/// 当前合并树的根读取器：可选取值复用 `Getter` 的解码规则。
+fn Config::root_getter(self : Config) -> Getter raise ConfigError {
+  Getter::make(self.merged(), KeyPath::root())
+}
+
+///|
+/// 取路径上的可选字符串：缺失或 `null` 都是 `None`，类型不符仍然报错。
+pub fn Config::get_opt_string(
+  self : Config,
+  path : String,
+) -> String? raise ConfigError {
+  self.root_getter().opt_string(path)
+}
+
+///|
+/// 取路径上的可选布尔：缺失或 `null` 都是 `None`，类型不符仍然报错。
+pub fn Config::get_opt_bool(
+  self : Config,
+  path : String,
+) -> Bool? raise ConfigError {
+  self.root_getter().opt_bool(path)
+}
+
+///|
+/// 取路径上的可选整数（`Int64`）：缺失或 `null` 都是 `None`。
+pub fn Config::get_opt_int(
+  self : Config,
+  path : String,
+) -> Int64? raise ConfigError {
+  self.root_getter().opt_int(path)
+}
+
+///|
+/// 取路径上的可选 32 位整数：缺失或 `null` 都是 `None`，越界仍然报错。
+pub fn Config::get_opt_int32(
+  self : Config,
+  path : String,
+) -> Int32? raise ConfigError {
+  self.root_getter().opt_int32(path)
+}
+
+///|
+/// 取路径上的可选无符号 64 位整数：缺失或 `null` 都是 `None`，负数仍然报错。
+pub fn Config::get_opt_uint64(
+  self : Config,
+  path : String,
+) -> UInt64? raise ConfigError {
+  self.root_getter().opt_uint64(path)
+}
+
+///|
+/// 取路径上的可选浮点数：缺失或 `null` 都是 `None`，整数来源按浮点加宽。
+pub fn Config::get_opt_float(
+  self : Config,
+  path : String,
+) -> Double? raise ConfigError {
+  self.root_getter().opt_float(path)
+}
+
+///|
+/// 取路径上的可选字节串：缺失或 `null` 都是 `None`。
+pub fn Config::get_opt_bytes(
+  self : Config,
+  path : String,
+) -> Bytes? raise ConfigError {
+  self.root_getter().opt_bytes(path)
+}
+
+///|
 /// 取路径上的原始值（要自己判断形状时用）
 pub fn Config::get_value(
   self : Config,
