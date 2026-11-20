@@ -1,19 +1,20 @@
 # Validation
 
-> **Conclusion**: validation is an explicit step: by key use the `Rule` rule table, by struct use `Validate`, and both share `ConfigError`.
+> **Conclusion**: validation is one explicit step after the config is read: a `Rule` states a constraint on one key, a `Validate` impl states the constraints of a struct's fields, and both raise the same `ConfigError` with the same message format.
 > **Authority**: Normative — rules, unknown keys and error shapes follow this document; signatures follow `.mbti`.
 > **Out of scope**: Full code is in [examples/validate](../../examples/validate/README.md); history is in [decisions.md](../decisions/decisions.md).
 
-Read the config in and verify it once, so problems surface at startup instead of halfway through business code.
+Nothing in the type system stops a config from being wrong. `70000` is a perfectly good integer, `"verbose"` is a perfectly good string, and a key nobody reads parses fine. Unchecked, such mistakes show up late: the listener fails to bind, the log level silently falls back, an `extra` key sits there forever. Validation moves that discovery to startup, where "refuse to start" is still a choice.
 
-Two paths share the same rules and errors:
+## Reading is not checking
 
-- **By key**: `Config` has no field declarations, so a rule table lists paths and constraints explicitly.
-- **By struct**: the fields are already in the struct, constraints go in the `Validate` impl, and run right after extraction.
+`get_int("db.port")` answers "what is it", and it is called wherever the value is needed. If it also enforced the range, the same config would be checked again at every call site, and the rule would live wherever the last caller put it. Checking is therefore its own step: the caller decides when it runs, and runs it once.
 
-The two paths do not replace each other: a handful of keys to check → by key; constraints mapping one-to-one to fields → `Validate`.
+A constraint can be stated in two ways, because there are two situations: before a struct exists, and after.
 
-## By key
+## Rule: a constraint as data
+
+`Rule` answers one question: is the value at this path acceptable? A rule is a small value holding a path and a check. It is not a trait and nothing implements it; you build rules with `Rule::int_range`, `Rule::string_len`, `Rule::one_of`, `Rule::allowed_keys` or `Rule::custom`, and hand an array to `Config::validate`:
 
 ```moonbit
 cfg.validate([
@@ -24,16 +25,17 @@ cfg.validate([
 ])
 ```
 
-`validate` stops at the first error, the same as `get_*`; use `validate_all` to list them all, returning
-`Array[ConfigError]` in rule-table order. Both carry `raise`: without `build()` they merge on the spot, and read or parse failures must be reported.
+This is the shape for a config nobody has typed: `Config` carries no field declarations, so there is no place to hang a constraint and no place to derive a path from. The rule table is that missing declaration. Being data, it can be a literal, assembled at runtime, or handed to hot reload.
 
-Required fields need no separate rule: any rule that cannot find its path raises `MissingKey`. `get_*` and `extract_from`
-report it too.
+A rule only ever sees the value at its own path. The executor resolves the path against the merged result and hands the value to the check: a missing path raises `MissingKey` before the check runs, so required fields need no separate rule. The rule itself only compares. `Rule::allowed_keys` is the same value applied to a table's key set instead of a single value, which is how unknown keys get caught.
 
-Beyond built-in rules, use `Rule::custom`: returning `None` passes, `Some(actual value)` fails. The `actual value` goes into the error message;
-for fields such as passwords write only the length or type, never return the value verbatim.
+`validate` stops at the first error, the same as `get_*`; `validate_all` returns `Array[ConfigError]` in rule-table order. Both carry `raise`: without `build()` they merge on the spot, and read or parse failures must be reported.
 
-## Structs
+`Rule::custom(path, expected, check)` is the escape hatch: `check : (Value) -> String?` returns `None` to pass or `Some(actual)` to fail, `expected` is the constraint text the message shows, and `actual` lands in the message. For fields such as passwords, return the length or the type, never the value.
+
+## Validate: constraints that follow the type
+
+Once the config is extracted into a struct, the struct is the declaration the rule table had to spell out: names and types are written down, and paths derive from `prefix`. `Validate` is the trait for that case, one method implemented next to the fields:
 
 ```moonbit
 impl @config.Validate for DbCfg with fn validate(self, prefix) {
@@ -41,22 +43,28 @@ impl @config.Validate for DbCfg with fn validate(self, prefix) {
   @config.check_string_len(prefix.add("user"), self.user, 1, 64)
 }
 
-let db : DbCfg = extract_validated_from(cfg, "db")
+let db : DbCfg = cfg.get_struct_validated("db")
 ```
 
-`extract_validated_from` first goes through `extract_from`, then calls the struct's own `Validate`. `prefix` is the
-starting path at extraction time; appending the field name gives the full path, so error messages match key-based validation.
+`get_struct_validated` runs `get_struct` first, so the struct is a `FromConfig` type; on the derive path `extract_validated_from(cfg, "db")` runs `extract_from` first. Both then call the struct's own `Validate`, with `prefix` set to where extraction started; appending the field name gives the full path, so messages match key-based validation. `check_int_range` and `check_string_len` are the comparison half of the matching rules — the lookup already happened.
+
+`Validate` is code owned by the type rather than data passed in, and that buys what a rule cannot: the constraint moves with the field when it is renamed, and it can compare fields with each other, because it holds the whole struct.
+
+The two names are close enough to confuse: `Config::validate` takes a rule table, `Validate::validate` is the method on a struct.
+
+## Choosing
+
+A constraint on one key → `Rule`; constraints tied to a struct's fields, or relating two fields → `Validate`. Neither replaces the other: unknown keys are only visible to a rule, and a field-to-field comparison belongs in `Validate`, which already holds both.
 
 ## Unknown keys
 
-`derive(FromJson)` ignores fields the struct does not have and offers no unknown-field hook, so a struct cannot know what extra
-keys exist around it. Unknown keys can only be checked by key:
+`derive(FromJson)` ignores fields the struct does not have and offers no unknown-field hook, so a struct cannot know what extra keys exist around it. Unknown keys can only be checked by key:
 
 ```moonbit
 Rule::allowed_keys("db", ["host", "port", "user"])
 ```
 
-If omitted, no check happens: the switch defaults to off. Nested structures need `allowed_keys` layer by layer; recursive strict schema is not done yet.
+`allowed_keys` is a `Rule` like the others, so it goes through the same path resolution; if it is not written, no check happens. Nested structures need `allowed_keys` layer by layer; recursive strict schema is not done yet.
 
 ## Errors
 
