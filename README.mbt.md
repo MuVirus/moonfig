@@ -51,7 +51,7 @@ moonfig is a comprehensive configuration library built for multi-source configur
 
 ### Installation
 
-moonfig needs the MoonBit toolchain; see the [official installation guide](https://www.moonbitlang.com/download/), and make sure `moon version` works.
+moonfig needs MoonBit 1.0 (currently the 1.0 release candidate); see the [official installation guide](https://www.moonbitlang.com/download/), and make sure `moon version` works.
 
 Add the module to an existing MoonBit project:
 

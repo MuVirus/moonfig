@@ -51,7 +51,7 @@ moonfig 是一个综合性配置库，面向多来源配置：把常见配置格
 
 ### 安装
 
-需要 MoonBit 工具链，安装方法见 [MoonBit 官方文档](https://www.moonbitlang.com/download/)；装好后 `moon version` 应该能输出版本号。
+需要 MoonBit 1.0（目前是 1.0 候选版本），安装方法见 [MoonBit 官方文档](https://www.moonbitlang.com/download/)；装好后 `moon version` 应该能输出版本号。
 
 在已有 MoonBit 项目里加依赖：
 
