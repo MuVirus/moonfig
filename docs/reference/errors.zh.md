@@ -8,6 +8,8 @@
 
 `to_string()` / `Show` 是唯一支持的消息格式。上表是索引；下面每节给出具体字段、触发条件和消息示例。
 
+消息里不含来源。要查错误背后的文件、环境变量或命令行参数，调 `origin_of_error(cfg, error)`；见 [sources.zh.md](../design/sources.zh.md#展示与反推)。
+
 | 变体 | 字段 | 何时抛出 |
 |---|---|---|
 | [`MissingKey`](#missingkey) | `path` | 没有任何来源提供这个路径 |
@@ -43,10 +45,11 @@ key 'db.port': expected Int, got Str
 
 字段：`message`（已经格式化好的底层细节）。
 
-格式无法解析字节、类型推断失败、整数超出范围，或命令行 / 环境变量的字面量非法。来源可以在消息前加上正在读取的参数或文件；变体仍然是 `ParseError`。
+格式无法解析字节、类型推断失败、整数超出范围，或命令行 / 环境变量的字面量非法。来源可以在消息前加上正在读取的参数或文件；变体仍然是 `ParseError`。`FileSource` 用 `file '<路径>': `，解析器自己的位置文本原样跟在后面。
 
 ```text
 parse error: Invalid character 'o' at line 1, column 1
+parse error: file 'config/app.json': Invalid character 'o' at line 1, column 1
 parse error: integer 99999999999999999999 exceeds Int64 range
 ```
 

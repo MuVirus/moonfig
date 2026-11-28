@@ -314,6 +314,46 @@ pub fn Config::origin_at(
 }
 
 ///|
+/// 错误涉及的键最终来自哪一层。
+///
+/// 键不存在（`MissingKey`）、错误没有键路径（`ParseError` / `IoError` /
+/// `UnknownFormat`），或这一层没做来源追踪时给 `None`。
+///
+/// Example:
+///
+/// ```mbt check
+/// test {
+///   let cfg = Config::new()
+///     .add(
+///       MemorySource::new(
+///         Value::table({ "db": Value::table({ "host": Value::str("localhost") }) }),
+///       ),
+///     )
+///     .build()
+///   let error = ConfigError::TypeMismatch("db.host", "Int", "Str")
+///   let origin = @config.origin_of_error(cfg, error).unwrap()
+///   assert_eq(origin.label(), "memory")
+///   assert_true(
+///     @config.origin_of_error(cfg, ConfigError::MissingKey("db.user")) is None,
+///   )
+/// }
+/// ```
+pub fn origin_of_error(
+  cfg : Config,
+  error : ConfigError,
+) -> Origin? raise ConfigError {
+  let path = match error {
+    TypeMismatch(path, _, _) => path
+    InvalidValue(path, _, _) => path
+    UnknownKey(path) => path
+    MergeConflict(path, _, _) => path
+    MissingKey(_) | ParseError(_) | IoError(_) | UnknownFormat(_, _) =>
+      return None
+  }
+  cfg.origin_of(path)
+}
+
+///|
 /// 所有叶子路径和它们的来源，适合做 `--print-config` 这类诊断命令。
 ///
 /// 叶子口径和 `snapshot()` 一致，只是不返回值；来源未追踪的叶子会被跳过。

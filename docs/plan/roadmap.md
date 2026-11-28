@@ -25,11 +25,24 @@ Status has three levels: ✅ done (in maintenance), 🚧 in progress, ⬜ not st
 
 ### Follow-ups
 
-The core features are done; the item below is a maintenance-period enhancement.
+The core features are done; the items below are maintenance-period enhancements.
 
-- [ ] Value errors carry origins (`TypeMismatch` still has three fields)
+- [ ] Error origin lookup: `origin_of_error(cfg, err)` returns the layer behind a `ConfigError`, without changing the error variants
+- [ ] Structured parse errors: keep the parser's reason and position as fields, render only in `Show`
+- [ ] Value errors carry positions: `TypeMismatch` / `InvalidValue` still have no source span; needs a per-node source map
 
-Tracking is already on `Value` and `Config`; writing origins into value error messages would change the shape of `ConfigError`, so it waits until the error types are settled together.
+**Design sketch (structured parse errors)**:
+
+- `SourcePosition`: `Text(line, column)` for text formats, `Bytes(offset)` for binary ones.
+- `ParseError(String)` becomes `ParseError(String, SourcePosition?)`; `Show` renders `parse error at line L, column C: ...` or `at byte N: ...`. This is a breaking change to `ConfigError`, taken once before 1.0.
+- The position comes from the format; the source label (`file:...`) stays separate. Build-time file parse errors get `file '<path>': ` from `FileSource` first; a uniform `At(label, error)` wrapper is decided when this item starts.
+- Coverage: JSON / INI / .env / XML first; TOML / YAML depend on their parser; CBOR byte offsets wait for upstream `CborError` to carry a position.
+
+**Acceptance**:
+
+- Origin lookup: after `catch`, a key-bearing error resolves to `file:...` / `env:...`; a build-time file parse error includes `file '<path>': `; `Show` text is unchanged.
+- Structured parse errors: `catch` reads the position field directly without parsing the message; JSON / INI / .env / XML each have a test; `Show` matches `errors.md`. TOML / YAML depend on their parser; CBOR offsets are not part of the acceptance.
+- Value-error positions: not started; no acceptance until the source-map design exists.
 
 ### Initial implementation order
 

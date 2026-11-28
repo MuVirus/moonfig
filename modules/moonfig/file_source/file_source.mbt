@@ -64,7 +64,11 @@ pub impl @config.OriginSite for FileSource with fn locator(self : FileSource) ->
 /// 文件内容交给格式解析
 pub impl @config.Source for FileSource with fn collect(self : FileSource) -> @config.Layer raise @config.ConfigError {
   let bytes = @config.Locator::read(self)
-  let value = self.format.decode_path(self.path, bytes)
+  let value = self.format.decode_path(self.path, bytes) catch {
+    @config.ConfigError::ParseError(message) =>
+      raise @config.ConfigError::ParseError("file '\{self.path}': \{message}")
+    error => raise error
+  }
   @config.Layer::new(value, Some(self as &@config.OriginSite))
 }
 

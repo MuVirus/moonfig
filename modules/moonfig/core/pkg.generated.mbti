@@ -10,6 +10,8 @@ pub fn check_int_range(KeyPath, Int64, Int64, Int64) -> Unit raise ConfigError
 
 pub fn check_string_len(KeyPath, String, Int32, Int32) -> Unit raise ConfigError
 
+pub fn origin_of_error(Config, ConfigError) -> Origin? raise ConfigError
+
 // Errors
 #derive(Eq, @debug.Debug)
 pub(all) suberror ConfigError {

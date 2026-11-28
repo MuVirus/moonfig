@@ -297,6 +297,71 @@ test "origins lists every leaf" {
 }
 
 ///|
+/// 错误的键能查回来源；没有键、没有来源或路径穿过标量时给 None
+test "origin_of_error resolves the layer behind key errors" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({
+          "db": Value::table({
+            "host": Value::str("localhost"),
+            "extra": Value::int(1L),
+          }),
+        }),
+      ),
+    )
+    .build()
+  let origin = @config.origin_of_error(
+    cfg,
+    ConfigError::TypeMismatch("db.host", "Int", "Str"),
+  ).unwrap()
+  assert_eq(origin.label(), "memory")
+  assert_eq(origin.path().to_string(), "db.host")
+  assert_true(
+    @config.origin_of_error(
+      cfg,
+      ConfigError::InvalidValue("db.host", "1..64 characters", "0 characters"),
+    )
+    is Some(_),
+  )
+  assert_true(
+    @config.origin_of_error(cfg, ConfigError::UnknownKey("db.extra")) is Some(_),
+  )
+  assert_true(
+    @config.origin_of_error(
+      cfg,
+      ConfigError::MergeConflict("db.host", "Str", "Int"),
+    )
+    is Some(_),
+  )
+  assert_true(
+    @config.origin_of_error(cfg, ConfigError::MissingKey("db.user")) is None,
+  )
+  assert_true(
+    @config.origin_of_error(cfg, ConfigError::ParseError("bad")) is None,
+  )
+  assert_true(@config.origin_of_error(cfg, ConfigError::IoError("bad")) is None)
+  assert_true(
+    @config.origin_of_error(cfg, ConfigError::UnknownFormat("x", [])) is None,
+  )
+}
+
+///|
+/// 路径穿过标量时没有可报告的来源
+test "origin_of_error returns none when the path crosses a scalar" {
+  let cfg = Config::new()
+    .add(MemorySource::new(Value::table({ "db": Value::str("x") })))
+    .build()
+  assert_true(
+    @config.origin_of_error(
+      cfg,
+      ConfigError::TypeMismatch("db.host", "Int", "Str"),
+    )
+    is None,
+  )
+}
+
+///|
 /// 来源不同不算值不同
 test "value equality ignores origin" {
   let from_memory = Config::new()

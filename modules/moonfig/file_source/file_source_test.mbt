@@ -132,3 +132,21 @@ test "FileSource::auto does not fall back after a known suffix fails" {
   assert_true(error is Some(ConfigError::ParseError(_)))
   remove_file(path)
 }
+
+///|
+/// 解析失败时消息里带文件名，解析器给的行列原样保留
+test "FileSource prefixes a parse error with the file path" {
+  let path = "tmp_moonfig_parse_error.json"
+  remove_file(path)
+  @fs.write_string_to_file(path, "not json")
+  let message = try {
+    ignore(Config::new().add(FileSource::auto(path, auto_detector())).build())
+    "no error"
+  } catch {
+    ConfigError::ParseError(message) => message
+    e => e.to_string()
+  }
+  assert_true(message.contains("file '\{path}': "))
+  assert_true(message.contains("line "))
+  remove_file(path)
+}

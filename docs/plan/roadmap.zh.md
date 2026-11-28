@@ -23,11 +23,24 @@ README 的路线图表是公开摘要，状态和条目与本文保持同步。
 
 ### 后续
 
-核心功能已完成；下面这条是维护期的增强。
+核心功能已完成；下面几条是维护期的增强。
 
-- [ ] 取值错误带上来源（`TypeMismatch` 现在还是三个字段）
+- [ ] 错误来源查询：`origin_of_error(cfg, err)` 返回 `ConfigError` 对应的层，不改错误变体
+- [ ] 结构化解析错误：解析器的原因和位置保留为字段，只在 `Show` 里渲染
+- [ ] 取值错误带位置：`TypeMismatch` / `InvalidValue` 还没有源码区间，需要逐节点的 source map
 
-追踪已经落到 `Value` 和 `Config` 上；把来源写进取值错误的消息里会改 `ConfigError` 的形状，等错误类型一起收口。
+**设计草案（结构化解析错误）**：
+
+- `SourcePosition`：文本格式用 `Text(line, column)`，二进制格式用 `Bytes(offset)`。
+- `ParseError(String)` 改成 `ParseError(String, SourcePosition?)`；`Show` 渲染成 `parse error at line L, column C: ...` 或 `at byte N: ...`。这是对 `ConfigError` 的破坏性变更，在 1.0 前做一次。
+- 位置由格式给，来源标签（`file:...`）单独处理。构建期文件解析错误先由 `FileSource` 补 `file '<path>': `；统一的 `At(label, error)` 包装等这条开始时再定。
+- 覆盖范围：先做 JSON / INI / .env / XML；TOML / YAML 取决于解析器；CBOR 字节偏移等上游 `CborError` 带位置。
+
+**验收**：
+
+- 来源查询：`catch` 后带键的错误能查到 `file:...` / `env:...`；构建期文件解析错误带 `file '<path>': `；`Show` 文本不变。
+- 结构化解析错误：`catch` 后直接读位置字段，不用解析消息；JSON / INI / .env / XML 各有一条测试；`Show` 与 `errors.md` 一致。TOML / YAML 取决于解析器；CBOR 偏移不进这次验收。
+- 取值错误位置：暂不启动；source map 设计出来之前没有验收。
 
 ### 最初的推进顺序
 

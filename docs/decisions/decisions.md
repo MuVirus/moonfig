@@ -19,7 +19,7 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #3 | Add a `Bytes` branch to `Value` | active | design/design.md, design/sources.md |
 | #4 | Boundaries of JSON numbers | active | design/extract.md |
 | #5 | Choosing a CBOR library | active | design/sources.md |
-| #6 | Origin tracking and merge rules | active | design/design.md, design/sources.md, guides/layer-sources.md |
+| #6 | Origin tracking and merge rules | partially superseded (#19 resolves the origin-on-errors item without extending the variants) | design/design.md, design/sources.md, guides/layer-sources.md |
 | #7 | The three sources: file, environment variables, command line | partially superseded (#18 changes the environment variable default separator) | design/sources.md, design/cli-args.md, guides/layer-sources.md |
 | #8 | `String::compare` compares length first | active | none (implementation only) |
 | #9 | Validation | active | design/validate.md |
@@ -32,6 +32,7 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #16 | Long switches may be registered | partially superseded (#17 changes the value boundary) | design/cli-args.md, guides/layer-sources.md |
 | #17 | `Separate` takes negative numbers as values | active (supersedes #16's value boundary) | design/cli-args.md, guides/layer-sources.md |
 | #18 | Environment variable separators are opt-in | active (supersedes #7's environment variable separator) | design/sources.md, guides/layer-sources.md |
+| #19 | Error origin is a lookup, not a field on the error | active (supersedes #6's plan to put origins into value-error variants) | design/sources.md, reference/errors.md, plan/roadmap.md |
 
 ## 1. Package names cannot collide with MoonBit standard library package names
 
@@ -120,7 +121,7 @@ Status: active | Affects: design/sources.md
 
 ## 6. Origin tracking and merge rules
 
-Status: active | Affects: design/design.md, design/sources.md, guides/layer-sources.md
+Status: partially superseded (#19 resolves the origin-on-errors item without extending the variants) | Affects: design/design.md, design/sources.md, guides/layer-sources.md
 
 > **Finalized 2026-10: store origin objects, not label strings**
 >
@@ -169,8 +170,7 @@ Status: active | Affects: design/design.md, design/sources.md, guides/layer-sour
 >   they merge on the spot, and a source resolution failure must be reported, not
 >   swallowed. A missing path returns `None`.
 > - Value errors do not carry origins yet (`TypeMismatch` still has three fields);
->   that comes after the error types are extended. For now use `origin_of` to
->   look it up.
+>   #19 resolves this with a lookup instead of extending the variants.
 
 ## 7. The three sources: file, environment variables, command line
 
@@ -504,3 +504,30 @@ Status: active (supersedes #7's environment variable separator) | Affects: desig
 > Code that relied on `_` nesting must add `.with_separator("_")`. This is a
 > breaking default change, so it needs a release note; `with_separator("__")` is
 > the recommended mode when keys contain underscores.
+
+## 19. Error origin is a lookup, not a field on the error
+
+Status: active (supersedes #6's plan to put origins into value-error variants) | Affects: design/sources.md, reference/errors.md, plan/roadmap.md
+
+> **2026-11: MoonFMI needs the file or variable behind a `ConfigError`, but the
+> message only names the key.**
+>
+> - `ConfigError` stays a data-only type with eight variants. Adding an origin
+>   field would break every pattern match and `Eq` / `Debug`, freeze the origin at
+>   raise time, and turn `Show` into the only place that can render it.
+> - `Config::origin_of` already answers "which layer", but callers would have to
+>   know which variants carry a path. `origin_of_error(cfg, error)` owns that
+>   table: `TypeMismatch`, `InvalidValue`, `UnknownKey` and `MergeConflict` query
+>   their path; `MissingKey`, `ParseError`, `IoError` and `UnknownFormat` return
+>   `None`, as does an untracked layer.
+> - `MissingKey` cannot name a file: no source provides the key. Parse errors
+>   happen before a `Config` exists, so the lookup cannot help there; `FileSource`
+>   prefixes the path into `ParseError` instead, which `reference/errors.md`
+>   already allows.
+> - Stage and exit-code mapping stay in the application. The library returns an
+>   `Origin` (data), not a sentence.
+>
+> Cost: the default message still has no origin; callers must make one lookup
+> call. Structured positions for parse errors (line / column / byte offset) and
+> per-node positions for value errors are not part of this decision; they remain
+> on the roadmap.

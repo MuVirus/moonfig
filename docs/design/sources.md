@@ -132,6 +132,7 @@ so composite sources can use `Value::with_origin` to tag subtrees with different
 
 - `Config::origin_of(path) -> Origin? raise ConfigError`
 - `Config::origin_at(path : KeyPath) -> Origin? raise ConfigError`
+- `origin_of_error(cfg, error) -> Origin? raise ConfigError`, the lookup for a `ConfigError`
 - `Config::origins() -> Array[Origin] raise ConfigError`, with paths computed during traversal, not stored in nodes
 - `Config::snapshot() -> Array[Entry] raise ConfigError`, each entry with its path, value and origin
 
@@ -142,13 +143,16 @@ so composite sources can use `Value::with_origin` to tag subtrees with different
 `path()` / `value()` / `origin()`. Table nodes recurse, arrays are leaves, sharing the same traversal with `origins()`;
 when an origin is not tracked, `origin()` gives `None` rather than faking a label.
 
-Both queries merge on the spot when `build()` has not run, hence the `raise`; `origin_of` gives `None` when the path does not exist.
+All these queries merge on the spot when `build()` has not run, hence the `raise`; `origin_of` gives `None` when the path does not exist.
 `StringSource` / `BytesSource` report `SourceKind::Custom`, with labels `string` / `bytes`.
+
+`origin_of_error` takes the path out of the error instead of asking the caller to know the variant table: `TypeMismatch`, `InvalidValue`, `UnknownKey` and `MergeConflict` query the path; `MissingKey`, `ParseError`, `IoError` and `UnknownFormat` give `None`, as does a layer without tracking. It cannot cover build-time parse errors — there is no `Config` yet — so `FileSource` puts the path into `ParseError` itself.
 
 `FileSource` is the site of its own layer and also implements `Locator`: `label()` is `file:<path>`,
 and `locator()` calls `read()` once to reread the same bytes. Its `raw_locator()` also returns itself,
 so hot reload can track file sources that were overwritten. A failed file read raises `ConfigError::IoError`, with the path and
-underlying reason in the message; a parse failure is still `ParseError`.
+underlying reason in the message; a parse failure is still `ParseError`, with
+`file '<path>': ` prefixed to the parser's own message.
 
 The environment and command-line sites store a "path → original variable name / argument name" index: `describe(path)` builds
 `env:APP_DB_PORT` / `cli:--log-level`; table nodes fall back to `env:prefix*` / `cli:args` when lookup fails.

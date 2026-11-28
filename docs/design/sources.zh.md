@@ -133,6 +133,7 @@ pub(open) trait Source {
 
 - `Config::origin_of(path) -> Origin? raise ConfigError`
 - `Config::origin_at(path : KeyPath) -> Origin? raise ConfigError`
+- `origin_of_error(cfg, error) -> Origin? raise ConfigError`，按 `ConfigError` 查来源
 - `Config::origins() -> Array[Origin] raise ConfigError`，路径在遍历时算出来，不存进节点
 - `Config::snapshot() -> Array[Entry] raise ConfigError`，每条带路径、值、来源
 
@@ -143,13 +144,16 @@ pub(open) trait Source {
 `path()` / `value()` / `origin()`。表节点递归、数组当叶子，和 `origins()` 共用同一套遍历；
 来源未追踪时 `origin()` 给 `None`，不伪造 label。
 
-两个查询在没 `build()` 时会现场合并，所以保留 `raise`；路径不存在时 `origin_of` 给 `None`。
+这些查询在没 `build()` 时会现场合并，所以保留 `raise`；路径不存在时 `origin_of` 给 `None`。
 `StringSource` / `BytesSource` 报 `SourceKind::Custom`，标签是 `string` / `bytes`。
+
+`origin_of_error` 从错误里取路径，不让调用方自己记变体表：`TypeMismatch`、`InvalidValue`、`UnknownKey`、`MergeConflict` 用路径查；`MissingKey`、`ParseError`、`IoError`、`UnknownFormat` 给 `None`，没做来源追踪的层也给 `None`。它覆盖不了构建期解析错误——那时还没有 `Config`——所以 `FileSource` 自己把路径拼进 `ParseError`。
 
 `FileSource` 自己是这层的 site，同时实现 `Locator`：`label()` 是 `file:<路径>`，
 `locator()` 调一次 `read()` 就重新读出同一份字节。它的 `raw_locator()` 也返回自己，
 所以热更新能跟踪到被覆盖的文件来源。读文件失败报 `ConfigError::IoError`，
-消息里带路径和底层原因；解析失败仍是 `ParseError`。
+消息里带路径和底层原因；解析失败仍是 `ParseError`，消息前加 `file '<路径>': `，
+解析器自己的文本原样跟在后面。
 
 环境变量、命令行的 site 里存「路径 → 原始变量名/参数名」索引：`describe(path)` 拼成
 `env:APP_DB_PORT` / `cli:--log-level`；表节点查不到时退回 `env:前缀*` / `cli:args`。

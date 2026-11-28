@@ -15,7 +15,7 @@
 | #3 | `Value` 加 `Bytes` 分支 | 生效 | design/design.md、design/sources.md |
 | #4 | JSON 数值的边界 | 生效 | design/extract.md |
 | #5 | CBOR 库的选择 | 生效 | design/sources.md |
-| #6 | 来源追踪与合并规则 | 生效 | design/design.md、design/sources.md、guides/layer-sources.md |
+| #6 | 来源追踪与合并规则 | 部分被取代（#19 用查询解决来源问题，不扩展变体） | design/design.md、design/sources.md、guides/layer-sources.md |
 | #7 | 文件、环境变量、命令行三个 source | 部分被取代（#18 改了环境变量的默认分隔符） | design/sources.md、design/cli-args.md、guides/layer-sources.md |
 | #8 | `String::compare` 先比长度 | 生效 | 无（仅实现） |
 | #9 | 校验 | 生效 | design/validate.md |
@@ -28,6 +28,7 @@
 | #16 | 长选项布尔开关可以登记 | 部分被取代（#17 改了取值边界） | design/cli-args.md、guides/layer-sources.md |
 | #17 | `Separate` 下负数当值 | 生效（取代 #16 的取值边界） | design/cli-args.md、guides/layer-sources.md |
 | #18 | 环境变量分隔符改为显式开启 | 生效（取代 #7 的环境变量分隔符） | design/sources.md、guides/layer-sources.md |
+| #19 | 错误的来源是查询，不进错误变体 | 生效（取代 #6 把来源写进取值错误变体的计划） | design/sources.md、reference/errors.md、plan/roadmap.md |
 
 ## 1. 包名不能和 MoonBit 标准库的包重名
 
@@ -100,7 +101,7 @@
 
 ## 6. 来源追踪与合并规则
 
-状态：生效｜影响：design/design.md、design/sources.md、guides/layer-sources.md
+状态：部分被取代（#19 用查询解决来源问题，不扩展变体）｜影响：design/design.md、design/sources.md、guides/layer-sources.md
 
 > **2026-10 定稿：存来源对象，不存 label 字符串**
 >
@@ -118,7 +119,7 @@
 > - `ByKind(order)` 的数组按优先级从高到低写；没列出的 kind 排在最后。实现上按优先级**从低到高**处理来源，再用 `LastWins` 合并——同一档内后加的仍然赢。
 > - `Custom(fn)` 收到的是「已经合好的部分」和「下一层」，返回新的部分。来源已经挂在值上，自定义函数要自己负责保留。
 > - `Config::origin_of` / `origins` 保留 `raise ConfigError`：没 `build()` 时它们会现场合并，来源解析失败必须报出来，不能吞掉。路径不存在返回 `None`。
-> - 取值错误暂时还没带上来源（`TypeMismatch` 仍是三个字段），等错误类型扩展后再补；现在先用 `origin_of` 查。
+> - 取值错误暂时还没带上来源（`TypeMismatch` 仍是三个字段）；#19 改为用查询解决，不扩展变体。
 
 ## 7. 文件、环境变量、命令行三个 source
 
@@ -346,3 +347,16 @@
 > 代价：不开 `with_separator` 时，`APP_DB_PORT` 是平铺的 `db_port`。依赖 `_`
 > 嵌套的代码要补 `.with_separator("_")`。这是破坏性的默认改动，需要写进发布
 > 说明；键名本身含下划线时，推荐用 `with_separator("__")`。
+
+## 19. 错误的来源是查询，不进错误变体
+
+状态：生效（取代 #6 把来源写进取值错误变体的计划）｜影响：design/sources.md、reference/errors.md、plan/roadmap.md
+
+> **2026-11：MoonFMI 需要知道 `ConfigError` 背后的文件或变量，但消息里只有键。**
+>
+> - `ConfigError` 保持只有数据的八个变体。加来源字段会破坏所有模式匹配和 `Eq` / `Debug`，把来源冻结在抛出时，也让 `Show` 变成唯一能渲染它的地方。
+> - `Config::origin_of` 已经能回答「哪一层」，但调用方得自己知道哪些变体带路径。`origin_of_error(cfg, error)` 接这张表：`TypeMismatch`、`InvalidValue`、`UnknownKey`、`MergeConflict` 用路径查；`MissingKey`、`ParseError`、`IoError`、`UnknownFormat` 给 `None`，没做来源追踪的层也给 `None`。
+> - `MissingKey` 报不出文件：没有任何来源提供这个键。解析错误发生在 `Config` 存在之前，查询也帮不上；改由 `FileSource` 把路径拼进 `ParseError`，`reference/errors.md` 本来就允许来源这么做。
+> - 阶段和退出码映射留在应用层。库返回 `Origin`（数据），不是一句话。
+>
+> 代价：默认消息仍然没有来源，调用方要多查一次。解析错误的结构化位置（行列 / 字节偏移）和取值错误的逐节点位置不在本次决定里，仍留在路线图。

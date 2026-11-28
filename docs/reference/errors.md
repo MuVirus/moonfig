@@ -8,6 +8,8 @@
 
 `to_string()` / `Show` is the only supported message format. The table is the index; the sections below give the exact fields, trigger conditions and message text.
 
+The message does not include the origin. To find the file, environment variable or command-line argument behind an error, call `origin_of_error(cfg, error)`; see [sources.md](../design/sources.md#display-and-reverse-lookup).
+
 | Variant | Fields | Raised when |
 |---|---|---|
 | [`MissingKey`](#missingkey) | `path` | No source provides the path |
@@ -43,10 +45,11 @@ key 'db.port': expected Int, got Str
 
 Fields: `message` (the underlying detail, already formatted).
 
-A format cannot parse the bytes, type inference fails, an integer exceeds its range, or a command-line / environment literal is invalid. Sources may prefix the message with the argument or file they were reading; `ParseError` stays the variant.
+A format cannot parse the bytes, type inference fails, an integer exceeds its range, or a command-line / environment literal is invalid. Sources may prefix the message with the argument or file they were reading; `ParseError` stays the variant. `FileSource` uses `file '<path>': `, and the parser's own position text follows unchanged.
 
 ```text
 parse error: Invalid character 'o' at line 1, column 1
+parse error: file 'config/app.json': Invalid character 'o' at line 1, column 1
 parse error: integer 99999999999999999999 exceeds Int64 range
 ```
 
