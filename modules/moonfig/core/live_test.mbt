@@ -71,6 +71,34 @@ test "build_live keeps a snapshot and reload replaces it" {
 }
 
 ///|
+test "declared strategies survive reload" {
+  let file = @config.MemorySource::new(
+    @config.Value::table({
+      "set": @config.Value::array([@config.Value::str("a")]),
+    }),
+  )
+  let cli = @config.MemorySource::new(
+    @config.Value::table({
+      "set": @config.Value::array([@config.Value::str("b")]),
+    }),
+  )
+  let live = @config.Config::new()
+    .add(file)
+    .add(cli)
+    .with_strategy("set", @config.MergeStrategy::Append)
+    .build_live()
+  assert_eq(
+    live.current().get_value("set"),
+    @config.Value::array([@config.Value::str("a"), @config.Value::str("b")]),
+  )
+  live.reload()
+  assert_eq(
+    live.current().get_value("set"),
+    @config.Value::array([@config.Value::str("a"), @config.Value::str("b")]),
+  )
+}
+
+///|
 test "a failed reload keeps the old snapshot" {
   let state = ["one"]
   let live = @config.Config::new().add(MutableSource::new(state)).build_live()

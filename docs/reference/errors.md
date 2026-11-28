@@ -16,7 +16,7 @@ The message does not include the origin. To find the file, environment variable 
 | [`TypeMismatch`](#typemismatch) | `path`, `expected`, `actual` | The value exists but its shape differs from the requested type |
 | [`ParseError`](#parseerror) | `message` | A format cannot parse the bytes, or a literal is invalid |
 | [`IoError`](#ioerror) | `message` | External data cannot be read |
-| [`MergeConflict`](#mergeconflict) | `path`, `left`, `right` | A merge would combine incompatible types; reserved |
+| [`MergeConflict`](#mergeconflict) | `path`, `left`, `right` | A declared list key met non-array values on both sides |
 | [`InvalidValue`](#invalidvalue) | `path`, `expected`, `actual` | A validation rule fails |
 | [`UnknownKey`](#unknownkey) | `path` | Validation finds a key outside the allowed list |
 | [`UnknownFormat`](#unknownformat) | `name`, `suffixes` | Format detection recognizes neither the suffix nor the content |
@@ -67,7 +67,7 @@ read error: file 'config/app.json': No such file or directory
 
 Fields: `path`, `left`, `right` (the two type names).
 
-Reserved variant. Current merge rules overwrite values instead of detecting type conflicts, so no code path raises it. It stays in the enum so a future strict merge rule has a stable shape.
+Raised when a key declared with a list merge strategy (`Config::with_strategy(path, Append | Union)`) meets values that are not arrays on both sides; a `null` on either side counts as absent and the other side stands. Keys without a declared strategy keep overwriting without type checks.
 
 ```text
 merge conflict at key 'db': Table vs Str

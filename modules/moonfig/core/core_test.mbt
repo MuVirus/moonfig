@@ -9,6 +9,7 @@ using @config {
   type ConfigError,
   type MemorySource,
   type MergeRule,
+  type MergeStrategy,
   type SourceKind,
   type StringSource,
   type Value,
@@ -435,6 +436,214 @@ test "Custom rule decides the merge" {
     .with_rule(MergeRule::Custom(fn(base, _over) { base }))
     .build()
   assert_eq(cfg.get_int("a"), 1L)
+}
+
+///|
+/// Append：声明路径两侧都是数组时拼接，配置层在前、命令行在后
+test "Append concatenates declared list keys" {
+  let file = kinded(
+    Value::table({
+      "simulate": Value::table({ "set": Value::array([Value::str("a")]) }),
+    }),
+    SourceKind::File,
+    "file:app.toml",
+  )
+  let cli = kinded(
+    Value::table({
+      "simulate": Value::table({ "set": Value::array([Value::str("b")]) }),
+    }),
+    SourceKind::Cli,
+    "cli:--set",
+  )
+  let cfg = Config::new()
+    .add(file)
+    .add(cli)
+    .with_strategy("simulate.set", MergeStrategy::Append)
+    .build()
+  assert_eq(
+    cfg.get_value("simulate.set"),
+    Value::array([Value::str("a"), Value::str("b")]),
+  )
+  let origin = cfg.origin_of("simulate.set").unwrap()
+  assert_eq(origin.kind(), SourceKind::Cli)
+  assert_eq(origin.label(), "cli:--set")
+}
+
+///|
+/// 没声明的路径仍是整体替换；显式 Replace 与不声明一致
+test "Replace keeps the overwrite behavior" {
+  let layers = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("a")]) }),
+      ),
+    )
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("b")]) }),
+      ),
+    )
+  assert_eq(layers.build().get_value("set"), Value::array([Value::str("b")]))
+  assert_eq(
+    layers.with_strategy("set", MergeStrategy::Replace).build().get_value("set"),
+    Value::array([Value::str("b")]),
+  )
+}
+
+///|
+/// Union：拼接后按首次出现去重
+test "Union dedups keeping the first occurrence" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({
+          "connect": Value::array([Value::str("a"), Value::str("b")]),
+        }),
+      ),
+    )
+    .add(
+      MemorySource::new(
+        Value::table({
+          "connect": Value::array([Value::str("b"), Value::str("c")]),
+        }),
+      ),
+    )
+    .with_strategy("connect", MergeStrategy::Union)
+    .build()
+  assert_eq(
+    cfg.get_value("connect"),
+    Value::array([Value::str("a"), Value::str("b"), Value::str("c")]),
+  )
+}
+
+///|
+/// Append 下 null 算缺席：没给的那层让位，给过的保留
+test "null counts as absent under a declared strategy" {
+  let kept = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("a")]) }),
+      ),
+    )
+    .add(MemorySource::new(Value::table({ "set": Value::null() })))
+    .with_strategy("set", MergeStrategy::Append)
+    .build()
+  assert_eq(kept.get_value("set"), Value::array([Value::str("a")]))
+  let filled = Config::new()
+    .add(MemorySource::new(Value::table({ "set": Value::null() })))
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("b")]) }),
+      ),
+    )
+    .with_strategy("set", MergeStrategy::Append)
+    .build()
+  assert_eq(filled.get_value("set"), Value::array([Value::str("b")]))
+}
+
+///|
+/// 声明了策略的路径两侧类型不符，build 抛 MergeConflict
+test "declared list keys raise MergeConflict on type mismatch" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("a")]) }),
+      ),
+    )
+    .add(MemorySource::new(Value::table({ "set": Value::str("b") })))
+    .with_strategy("set", MergeStrategy::Append)
+  let message = try {
+    ignore(cfg.build())
+    "no error"
+  } catch {
+    error => error.to_string()
+  }
+  assert_eq(message, "merge conflict at key 'set': Array vs Str")
+}
+
+///|
+/// 策略与 ByKind 组合：拼接顺序跟处理顺序走，优先级低的在前
+test "Append order follows the merge rule order" {
+  let memory = kinded(
+    Value::table({ "set": Value::array([Value::str("m")]) }),
+    SourceKind::Memory,
+    "memory",
+  )
+  let env = kinded(
+    Value::table({ "set": Value::array([Value::str("e")]) }),
+    SourceKind::Env,
+    "env",
+  )
+  let cli = kinded(
+    Value::table({ "set": Value::array([Value::str("c")]) }),
+    SourceKind::Cli,
+    "cli",
+  )
+  let cfg = Config::new()
+    .add(memory)
+    .add(env)
+    .add(cli)
+    .with_rule(MergeRule::ByKind([SourceKind::Cli, SourceKind::Env]))
+    .with_strategy("set", MergeStrategy::Append)
+    .build()
+  // ByKind 的处理顺序：没列出的 Memory 最先，然后 Env，最后 Cli
+  assert_eq(
+    cfg.get_value("set"),
+    Value::array([Value::str("m"), Value::str("e"), Value::str("c")]),
+  )
+}
+
+///|
+/// 多个路径各声明各的策略，互不影响
+test "strategies can be declared per key" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({
+          "set": Value::array([Value::str("a")]),
+          "connect": Value::array([Value::str("x")]),
+        }),
+      ),
+    )
+    .add(
+      MemorySource::new(
+        Value::table({
+          "set": Value::array([Value::str("a")]),
+          "connect": Value::array([Value::str("x"), Value::str("y")]),
+        }),
+      ),
+    )
+    .with_strategy("set", MergeStrategy::Append)
+    .with_strategy("connect", MergeStrategy::Union)
+    .build()
+  assert_eq(
+    cfg.get_value("set"),
+    Value::array([Value::str("a"), Value::str("a")]),
+  )
+  assert_eq(
+    cfg.get_value("connect"),
+    Value::array([Value::str("x"), Value::str("y")]),
+  )
+}
+
+///|
+/// Custom 自己接管合并，策略对它不生效
+test "Custom rule ignores declared strategies" {
+  let cfg = Config::new()
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("a")]) }),
+      ),
+    )
+    .add(
+      MemorySource::new(
+        Value::table({ "set": Value::array([Value::str("b")]) }),
+      ),
+    )
+    .with_rule(MergeRule::Custom(fn(_base, over) { over }))
+    .with_strategy("set", MergeStrategy::Append)
+    .build()
+  assert_eq(cfg.get_value("set"), Value::array([Value::str("b")]))
 }
 
 ///|

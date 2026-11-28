@@ -46,6 +46,7 @@ pub struct Config {
   sources : Array[&Source]
   rule : MergeRule
   value : Value
+  // private fields
 }
 pub fn Config::add(Self, &Source) -> Self
 pub fn Config::build(Self) -> Self raise ConfigError
@@ -75,6 +76,7 @@ pub fn Config::snapshot(Self) -> Array[Entry] raise ConfigError
 pub fn Config::validate(Self, Array[Rule]) -> Unit raise ConfigError
 pub fn Config::validate_all(Self, Array[Rule]) -> Array[ConfigError] raise ConfigError
 pub fn Config::with_rule(Self, MergeRule) -> Self
+pub fn Config::with_strategy(Self, String, MergeStrategy) -> Self
 
 pub struct Entry {
   // private fields
@@ -156,6 +158,12 @@ pub(all) enum MergeRule {
   FirstWins
   ByKind(Array[SourceKind])
   Custom((Value, Value) -> Value)
+}
+
+pub(all) enum MergeStrategy {
+  Replace
+  Append
+  Union
 }
 
 pub struct Origin {

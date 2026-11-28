@@ -30,6 +30,7 @@ The core features are done; the items below are maintenance-period enhancements.
 - [ ] Error origin lookup: `origin_of_error(cfg, err)` returns the layer behind a `ConfigError`, without changing the error variants
 - [ ] Structured parse errors: keep the parser's reason and position as fields, render only in `Show`
 - [ ] Value errors carry positions: `TypeMismatch` / `InvalidValue` still have no source span; needs a per-node source map
+- [x] List merge strategies: `with_strategy(path, Append | Union)` concatenates declared list keys instead of replacing them; non-array pairs raise `MergeConflict`, see [design.md](../design/design.md#2-merge)
 
 **Design sketch (structured parse errors)**:
 

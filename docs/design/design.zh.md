@@ -50,11 +50,28 @@ fn merge(base : Value, over : Value) -> Value
 - 其它 → `over` 覆盖 `base`
 - 数组**整体替换**，不拼接
 
+### 列表合并策略
+
+按键可以用 `Config::with_strategy(path, strategy)` 声明自己这份列表怎么合：
+
+```moonbit
+pub(all) enum MergeStrategy {
+  Replace  // 默认：数组整体替换
+  Append   // 拼接：先处理的来源在前，后处理的在后
+  Union    // 拼接后按首次出现去重
+}
+```
+
+- 策略只在该路径「两侧都是数组」时生效；两侧都是表时照常逐 key 递归。
+- `Append` / `Union` 下任一侧是 `null` 算缺席，另一侧保留；其它两侧非数组的情况抛 `MergeConflict(path, left, right)`。
+- 拼接出的数组节点和合表一样取 `over` 的 origin；元素各自保留原来那层的 origin。
+- 策略与 `MergeRule` 正交：`LastWins` 下配置文件先进、命令行后进，`Append` 的结果就是「配置文件在前、命令行在后」。`Custom(fn)` 完全接管合并，策略对它不生效。
+
 ## 3. 配置对象与取值
 
 `Config` 持有 `sources`、`rule`、`value` 三个字段：`add` 只 append，`build` 按 `rule` 把 Source 逐个 merge 成一棵树，之后的 `get_*` 都从这棵树按路径取值。它不认识具体格式，只认识 `Source`。
 
-`MergeRule` 默认 `LastWins`（后加覆盖先加），另有 `FirstWins`、`ByKind(Array[SourceKind])` 和 `Custom(fn)`。规则是整份 `Config` 的，不做单层特殊；要单层特殊就给 `Source` 包一层。`ByKind` 的数组按优先级从高到低写，没列出的 kind 排在最后，同一档内后加的赢；`Custom(fn)` 收到「已经合好的部分」和「下一层」，返回新的部分。
+`MergeRule` 默认 `LastWins`（后加覆盖先加），另有 `FirstWins`、`ByKind(Array[SourceKind])` 和 `Custom(fn)`。规则是整份 `Config` 的，不做单层特殊；要单层特殊就给 `Source` 包一层。`ByKind` 的数组按优先级从高到低写，没列出的 kind 排在最后，同一档内后加的赢；`Custom(fn)` 收到「已经合好的部分」和「下一层」，返回新的部分。列表键还可以用 `with_strategy` 按键声明 `MergeStrategy`（`Append` / `Union`），与规则相互独立，见第 2 节。
 
 ```moonbit
 let cfg = Config::new()
@@ -85,7 +102,7 @@ cfg.get_opt_float("timeout")     // Double? —— 缺失或 null 时是 None
 唯一体验标准：用户看到错误，能立刻知道**哪个键、期望什么、实际什么**。
 
 `IoError` 和 `ParseError` 分开：读不到和读到了但解析不了是两回事，混在一起会让用户去查格式。
-`MergeConflict` 是预留变体——现在的合并规则都是覆盖，不做类型冲突判定。
+`MergeConflict` 只在声明了列表合并策略（第 2 节）的键两侧出现非数组值时抛出；其余合并仍是覆盖，不做类型冲突判定。
 
 ## 设计文档
 

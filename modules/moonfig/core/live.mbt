@@ -9,6 +9,7 @@
 pub struct LiveConfig {
   priv sources : Array[&Source]
   priv rule : MergeRule
+  priv strategies : Map[String, MergeStrategy]
   priv mut current : Config
   priv locators : Array[&Locator]
   priv mut snapshots : Array[Bytes]
@@ -20,6 +21,7 @@ fn LiveConfig::rebuild(self : LiveConfig) -> Config raise ConfigError {
   let draft = Config::{
     sources: self.sources.copy(),
     rule: self.rule,
+    strategies: self.strategies,
     value: Value::table(Map([], capacity=0)),
   }
   draft.build()
@@ -69,12 +71,13 @@ fn read_snapshots(locators : Array[&Locator]) -> Array[Bytes] raise ConfigError 
 pub fn Config::build_live(self : Config) -> LiveConfig raise ConfigError {
   let sources = self.sources.copy()
   let rule = self.rule
+  let strategies = self.strategies.copy()
   let locators = file_locators(sources)
   // 先记基准再 build：如果文件在 build 期间改了，下一次 poll 会看到差异，
   // 不会出现「快照已经是新内容、current 还是旧内容」的窗口。
   let snapshots = read_snapshots(locators)
   let current = self.build()
-  { sources, rule, current, locators, snapshots, }
+  { sources, rule, strategies, current, locators, snapshots, }
 }
 
 ///|

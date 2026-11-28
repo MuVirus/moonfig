@@ -8,6 +8,7 @@
 pub struct Config {
   sources : Array[&Source]
   rule : MergeRule
+  priv strategies : Map[String, MergeStrategy]
   value : Value
 }
 
@@ -17,6 +18,7 @@ pub fn Config::new() -> Config {
   {
     sources: [],
     rule: MergeRule::LastWins,
+    strategies: Map([], capacity=0),
     value: Value::table(Map([], capacity=0)),
   }
 }
@@ -31,13 +33,60 @@ pub fn Config::add(self : Config, source : &Source) -> Config {
 ///|
 /// 换一条合并规则
 pub fn Config::with_rule(self : Config, rule : MergeRule) -> Config {
-  { sources: self.sources, rule, value: self.value, }
+  {
+    sources: self.sources,
+    rule,
+    strategies: self.strategies,
+    value: self.value,
+  }
+}
+
+///|
+/// 给一个路径声明列表合并策略；同一路径多次声明，后一次赢。
+///
+/// 策略只影响该路径上「两侧都是数组」的合并；路径要写全（`"db.hosts"`，
+/// 不是 `"hosts"`）。`MergeRule::Custom` 自己接管合并，策略对它不生效。
+///
+/// Example:
+///
+/// ```mbt check
+/// test {
+///   let file = MemorySource::new(
+///     Value::table({ "set": Value::array([Value::str("a")]) }),
+///   )
+///   let cli = MemorySource::new(
+///     Value::table({ "set": Value::array([Value::str("b")]) }),
+///   )
+///   let cfg = Config::new()
+///     .add(file)
+///     .add(cli)
+///     .with_strategy("set", @config.MergeStrategy::Append)
+///     .build()
+///   assert_eq(
+///     cfg.get_value("set"),
+///     Value::array([Value::str("a"), Value::str("b")]),
+///   )
+/// }
+/// ```
+pub fn Config::with_strategy(
+  self : Config,
+  path : String,
+  strategy : MergeStrategy,
+) -> Config {
+  let strategies = self.strategies.copy()
+  strategies[KeyPath::parse(path).to_string()] = strategy
+  { sources: self.sources, rule: self.rule, strategies, value: self.value, }
 }
 
 ///|
 /// 按规则合并所有来源
 pub fn Config::build(self : Config) -> Config raise ConfigError {
-  { sources: [], rule: self.rule, value: self.merged(), }
+  {
+    sources: [],
+    rule: self.rule,
+    strategies: self.strategies,
+    value: self.merged(),
+  }
 }
 
 ///|
@@ -58,7 +107,7 @@ fn Config::merged(self : Config) -> Value raise ConfigError {
         Some(base) =>
           match rule {
             MergeRule::Custom(custom) => custom(base, value)
-            _ => merge(base, value)
+            _ => merge_at(base, value, KeyPath::root(), self.strategies)
           }
       },
     )

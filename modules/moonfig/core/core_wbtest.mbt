@@ -3,6 +3,12 @@
 // Keep them focused; public behavior belongs in `_test.mbt`.
 
 ///|
+/// 无按键策略时的合并入口：行为与未声明策略的 `Config::build` 相同
+fn merge_default(base : Value, over : Value) -> Value raise ConfigError {
+  merge_at(base, over, KeyPath::root(), Map([], capacity=0))
+}
+
+///|
 /// 合并的三条规则：后覆盖前、表逐 key 合、array整体换
 test "merge rules" {
   let base = Value::table({
@@ -18,7 +24,7 @@ test "merge rules" {
     "hosts": Value::array([Value::str("c")]),
   })
   assert_eq(
-    merge(base, over),
+    merge_default(base, over),
     Value::table({
       "db": Value::table({
         "host": Value::str("localhost"),
@@ -33,7 +39,7 @@ test "merge rules" {
 ///|
 /// 后加的来源里出现新 key 也要留下
 test "merge adds new keys" {
-  let merged = merge(
+  let merged = merge_default(
     Value::table({ "a": Value::int(1L) }),
     Value::table({ "b": Value::int(2L) }),
   )
@@ -43,7 +49,7 @@ test "merge adds new keys" {
 ///|
 /// 表覆盖标量时是整张换掉，不报错
 test "table replaces scalar" {
-  let merged = merge(
+  let merged = merge_default(
     Value::table({ "a": Value::int(1L) }),
     Value::table({ "a": Value::str("now a string") }),
   )
@@ -175,13 +181,71 @@ test "merge keeps the overriding table origin" {
     Some(test_site(SourceKind::Env, "env:over")),
   )
   let nodes = []
-  node_origins(merge(base, over), "", nodes)
+  node_origins(merge_default(base, over), "", nodes)
   let labels = nodes.map(fn(pair) { "\{pair.0}=\{pair.1}" })
   assert_true(labels.contains("=env:over"))
   assert_true(labels.contains("db=env:over"))
   assert_true(labels.contains("db.host=file:base"))
   assert_true(labels.contains("db.port=env:over"))
   assert_true(labels.contains("keep=file:base"))
+}
+
+///|
+/// 策略声明的路径两侧都是表时，照常逐 key 合，策略不生效
+test "strategy on a table path still merges key by key" {
+  let strategies : Map[String, MergeStrategy] = Map([], capacity=0)
+  strategies["db"] = Append
+  let merged = merge_at(
+    Value::table({ "db": Value::table({ "host": Value::str("a") }) }),
+    Value::table({ "db": Value::table({ "port": Value::int(1L) }) }),
+    KeyPath::root(),
+    strategies,
+  )
+  assert_eq(
+    merged.get_at(KeyPath::parse("db")),
+    Value::table({ "host": Value::str("a"), "port": Value::int(1L) }),
+  )
+}
+
+///|
+/// Union 也去掉同一层内部的重复
+test "union dedups within and across layers" {
+  let strategies : Map[String, MergeStrategy] = Map([], capacity=0)
+  strategies["set"] = Union
+  let merged = merge_at(
+    Value::table({
+      "set": Value::array([Value::str("a"), Value::str("a"), Value::str("b")]),
+    }),
+    Value::table({ "set": Value::array([Value::str("b"), Value::str("c")]) }),
+    KeyPath::root(),
+    strategies,
+  )
+  assert_eq(
+    merged.get_at(KeyPath::parse("set")),
+    Value::array([Value::str("a"), Value::str("b"), Value::str("c")]),
+  )
+}
+
+///|
+/// 拼接出的数组节点记覆盖方的来源，元素各自保留原来那层的来源
+test "appended array node takes the overriding origin" {
+  let strategies : Map[String, MergeStrategy] = Map([], capacity=0)
+  strategies["set"] = Append
+  let base = attach_origin(
+    Value::table({ "set": Value::array([Value::str("a")]) }),
+    Some(test_site(SourceKind::File, "file:base")),
+  )
+  let over = attach_origin(
+    Value::table({ "set": Value::array([Value::str("b")]) }),
+    Some(test_site(SourceKind::Env, "env:over")),
+  )
+  let merged = merge_at(base, over, KeyPath::root(), strategies)
+  let nodes = []
+  node_origins(merged, "", nodes)
+  let labels = nodes.map(fn(pair) { "\{pair.0}=\{pair.1}" })
+  assert_true(labels.contains("set=env:over"))
+  assert_true(labels.contains("set[0]=file:base"))
+  assert_true(labels.contains("set[1]=env:over"))
 }
 
 ///|

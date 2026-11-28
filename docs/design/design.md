@@ -52,11 +52,28 @@ Three rules:
 - otherwise → `over` overwrites `base`
 - arrays are replaced **as a whole**, not concatenated
 
+### Merge strategies
+
+A key can declare how its list merges with `Config::with_strategy(path, strategy)`:
+
+```moonbit
+pub(all) enum MergeStrategy {
+  Replace  // the default: arrays are replaced as a whole
+  Append   // concatenate: earlier-processed layer first, later-processed after
+  Union    // concatenate, then dedup keeping the first occurrence
+}
+```
+
+- The strategy applies only when both sides at that path are arrays; when both sides are tables the merge recurses key by key as usual.
+- Under `Append` / `Union`, a `null` on either side counts as absent and the other side stands; any other non-array pair raises `MergeConflict(path, left, right)`.
+- The merged array node takes `over`'s origin like merged tables do; elements keep their own layer's origin.
+- Strategies are orthogonal to `MergeRule`: with `LastWins` and the file added before the CLI, `Append` yields "file entries first, CLI entries after". `Custom(fn)` takes over merging entirely, so strategies do not apply to it.
+
 ## 3. Config object and getters
 
 `Config` holds three fields, `sources`, `rule` and `value`: `add` only appends, `build` merges the Sources one by one into a tree according to `rule`, and later `get_*` calls read values from that tree by path. It knows nothing about concrete formats, only `Source`.
 
-`MergeRule` defaults to `LastWins` (later additions overwrite earlier ones), and also offers `FirstWins`, `ByKind(Array[SourceKind])` and `Custom(fn)`. The rule belongs to the whole `Config`; there is no per-layer special case — if you need one, wrap the `Source`. For `ByKind` the array is written from highest to lowest priority; unlisted kinds come last, and within the same tier the later addition wins. `Custom(fn)` receives "the part merged so far" and "the next layer" and returns the new part.
+`MergeRule` defaults to `LastWins` (later additions overwrite earlier ones), and also offers `FirstWins`, `ByKind(Array[SourceKind])` and `Custom(fn)`. The rule belongs to the whole `Config`; there is no per-layer special case — if you need one, wrap the `Source`. For `ByKind` the array is written from highest to lowest priority; unlisted kinds come last, and within the same tier the later addition wins. `Custom(fn)` receives "the part merged so far" and "the next layer" and returns the new part. A list key can also declare a per-key strategy with `with_strategy` (`MergeStrategy::Append` / `Union`), independent of the rule; see section 2.
 
 ```moonbit
 let cfg = Config::new()
@@ -87,7 +104,7 @@ To reread automatically when the config file changes, use `build_live()` to keep
 The single UX standard: when users see an error, they immediately know **which key, what was expected, what was actual**.
 
 `IoError` and `ParseError` are separate: unreadable and read-but-unparsable are two different things, and mixing them sends users looking at the format.
-`MergeConflict` is a reserved variant — current merge rules are all overwrite, with no type-conflict detection.
+`MergeConflict` is raised only where a key declared a list merge strategy (section 2) meets non-array values on both sides; the rest of the merge keeps overwriting without type checks.
 
 ## Design documents
 

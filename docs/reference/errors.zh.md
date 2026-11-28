@@ -16,7 +16,7 @@
 | [`TypeMismatch`](#typemismatch) | `path`、`expected`、`actual` | 值存在，但形状和请求的类型不一致 |
 | [`ParseError`](#parseerror) | `message` | 格式无法解析字节，或字面量非法 |
 | [`IoError`](#ioerror) | `message` | 外部数据读取失败 |
-| [`MergeConflict`](#mergeconflict) | `path`、`left`、`right` | 合并会撞上不兼容的类型；预留 |
+| [`MergeConflict`](#mergeconflict) | `path`、`left`、`right` | 声明的列表键两侧出现了非数组值 |
 | [`InvalidValue`](#invalidvalue) | `path`、`expected`、`actual` | 校验规则失败 |
 | [`UnknownKey`](#unknownkey) | `path` | 校验发现允许列表之外的键 |
 | [`UnknownFormat`](#unknownformat) | `name`、`suffixes` | 格式发现既认不出后缀，也认不出内容 |
@@ -67,7 +67,7 @@ read error: file 'config/app.json': No such file or directory
 
 字段：`path`、`left`、`right`（两个类型名）。
 
-预留变体。当前合并规则直接覆盖，不检测类型冲突，所以没有代码路径会抛它。保留在枚举里，是为了将来加严格合并规则时形状稳定。
+用 `Config::with_strategy(path, Append | Union)` 声明了列表合并策略的键，两侧出现非数组值时抛出；任一侧是 `null` 时算缺席，另一侧保留。没声明策略的键仍然直接覆盖，不检测类型冲突。
 
 ```text
 merge conflict at key 'db': Table vs Str

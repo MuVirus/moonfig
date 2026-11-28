@@ -15,7 +15,7 @@
 | #3 | `Value` 加 `Bytes` 分支 | 生效 | design/design.md、design/sources.md |
 | #4 | JSON 数值的边界 | 生效 | design/extract.md |
 | #5 | CBOR 库的选择 | 生效 | design/sources.md |
-| #6 | 来源追踪与合并规则 | 部分被取代（#19 用查询解决来源问题，不扩展变体） | design/design.md、design/sources.md、guides/layer-sources.md |
+| #6 | 来源追踪与合并规则 | 部分被取代（#19 用查询解决来源问题；#20 给 MergeConflict 一个抛出点） | design/design.md、design/sources.md、guides/layer-sources.md |
 | #7 | 文件、环境变量、命令行三个 source | 部分被取代（#18 改了环境变量的默认分隔符） | design/sources.md、design/cli-args.md、guides/layer-sources.md |
 | #8 | `String::compare` 先比长度 | 生效 | 无（仅实现） |
 | #9 | 校验 | 生效 | design/validate.md |
@@ -29,6 +29,7 @@
 | #17 | `Separate` 下负数当值 | 生效（取代 #16 的取值边界） | design/cli-args.md、guides/layer-sources.md |
 | #18 | 环境变量分隔符改为显式开启 | 生效（取代 #7 的环境变量分隔符） | design/sources.md、guides/layer-sources.md |
 | #19 | 错误的来源是查询，不进错误变体 | 生效（取代 #6 把来源写进取值错误变体的计划） | design/sources.md、reference/errors.md、plan/roadmap.md |
+| #20 | 列表合并策略是按键的独立维度，不进 MergeRule | 生效（取代 #6「没有代码路径抛 MergeConflict」的结论） | design/design.md、reference/errors.md、guides/layer-sources.md、plan/roadmap.md |
 
 ## 1. 包名不能和 MoonBit 标准库的包重名
 
@@ -101,7 +102,7 @@
 
 ## 6. 来源追踪与合并规则
 
-状态：部分被取代（#19 用查询解决来源问题，不扩展变体）｜影响：design/design.md、design/sources.md、guides/layer-sources.md
+状态：部分被取代（#19 用查询解决来源问题；#20 给 MergeConflict 一个抛出点）｜影响：design/design.md、design/sources.md、guides/layer-sources.md
 
 > **2026-10 定稿：存来源对象，不存 label 字符串**
 >
@@ -114,7 +115,7 @@
 > - `Value::with_origin(&OriginSite)` 留给组合来源（一个来源里读多个文件），按子树标不同的 site；`attach_origin` 只补 `None`，不覆盖已有的。
 > - `&T` 在 MoonBit 里是 trait object，只能用于 trait，不是 Rust 的借用：没有生命周期检查，trait object 会被 GC/RC 保活。`&Path` 不成立，`Path` 是 struct。
 > - `SourceId` 枚举方案没有采用：每个分支仍要存 String，Env/Cli 仍要按路径查名字；trait object 的 site 同时解决这两件事。
-> - `ConfigError::MergeConflict` 目前没有代码路径会抛：三种合并规则都是覆盖，不做类型冲突判定。变体先保留，给以后加校验时用。
+> - `ConfigError::MergeConflict` 目前没有代码路径会抛：三种合并规则都是覆盖，不做类型冲突判定。变体先保留，给以后加校验时用。（#20 后来给声明的列表键一个抛出点。）
 > - `StringSource` / `BytesSource` 归到 `SourceKind::Custom`，标签分别是 `string` / `bytes`。它们既不是文件，也不是环境变量；给 `ByKind` 一个明确的档位比硬塞进 `Memory` 更清楚。
 > - `ByKind(order)` 的数组按优先级从高到低写；没列出的 kind 排在最后。实现上按优先级**从低到高**处理来源，再用 `LastWins` 合并——同一档内后加的仍然赢。
 > - `Custom(fn)` 收到的是「已经合好的部分」和「下一层」，返回新的部分。来源已经挂在值上，自定义函数要自己负责保留。
@@ -360,3 +361,18 @@
 > - 阶段和退出码映射留在应用层。库返回 `Origin`（数据），不是一句话。
 >
 > 代价：默认消息仍然没有来源，调用方要多查一次。解析错误的结构化位置（行列 / 字节偏移）和取值错误的逐节点位置不在本次决定里，仍留在路线图。
+
+## 20. 列表合并策略是按键的独立维度，不进 MergeRule
+
+状态：生效（取代 #6「没有代码路径抛 MergeConflict」的结论）｜影响：design/design.md、reference/errors.md、guides/layer-sources.md、plan/roadmap.md
+
+> **2026-11：MoonFMI 需要列表键跨层累加（配置文件默认值加命令行追加）；整体替换迫使每个下游自己绕过合并引擎。**
+>
+> - 策略放在规则旁边，不塞进规则里：`Config::with_strategy(path, MergeStrategy)`，取值 `Replace` / `Append` / `Union`。`MergeRule` 只管来源排序；做成 `MergeRule::WithStrategies(...)` 变体得嵌套兜底规则，把两个正交的轴搅进一个枚举。
+> - 策略按完整点号路径匹配，暂不支持通配符（`path.mbt` 已预留）。只有该路径两侧都是数组时策略才生效；两侧都是表时照常逐 key 递归。
+> - `Append` / `Union` 下任一侧是 `null` 算缺席，另一侧保留；其它两侧非数组的情况抛 `MergeConflict(path, left, right)`——#6 保留至今的变体终于有了抛出点，形状就是错误参考里预留的那个。
+> - `Union` 用 `Value` 的 `Eq`（只比结构、不看来源）去重，保留首次出现，结果顺序确定：先合上的层在前，正在合的层的新元素在后。
+> - 拼接出的数组节点和合表一样取 `over` 的 origin；元素各自保留原来那层的 origin。
+> - `Custom(fn)` 完全接管合并，忽略策略；`LiveConfig` 像捕获规则一样捕获策略表，热重载后策略继续生效。
+>
+> 代价：`Config` / `LiveConfig` 各多一张 `Map[String, MergeStrategy]`；声明路径两侧类型不符时 build 会失败，原来是静默覆盖。

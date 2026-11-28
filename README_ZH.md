@@ -121,7 +121,7 @@ db.port = 6543
 
 环境变量默认只按 `.` 分层；要让 `APP_DB_PORT` 变成 `db.port`，加 `.with_separator("_")`。
 
-后加的来源覆盖同名键；嵌套配置逐层合并，数组整体替换。默认后加者优先，也可以改成先加者优先、按来源类型排序，或传自定义函数。
+后加的来源覆盖同名键；嵌套配置逐层合并，数组整体替换。默认后加者优先，也可以改成先加者优先、按来源类型排序，或传自定义函数。列表键还能用 `.with_strategy(path, MergeStrategy::Append)` 给自己声明策略——把各层拼接起来（配置默认值在前、命令行追加在后），或者求并集去重。
 
 完整示例：[examples/multi_source](examples/multi_source/README.md)。分层步骤和常见坑见
 [guides/layer-sources.zh.md](docs/guides/layer-sources.zh.md)。

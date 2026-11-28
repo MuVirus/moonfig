@@ -16,6 +16,20 @@ pub(all) enum MergeRule {
 }
 
 ///|
+/// 列表键的合并策略，用 `Config::with_strategy` 按路径声明。
+///
+/// 只影响声明路径上「两侧都是数组」的合并；null 算缺席，其它类型不符抛
+/// `MergeConflict`。完整语义见 `docs/design/design.md` 的合并一节。
+pub(all) enum MergeStrategy {
+  /// 整体替换（默认）：不声明的路径就是这个行为
+  Replace
+  /// 拼接：先处理的来源在前，后处理的在后
+  Append
+  /// 拼接后按首次出现去重
+  Union
+}
+
+///|
 /// 一个 kind 在 `ByKind` 里的优先级，数字越小越优先。
 fn kind_rank(kind : SourceKind, order : Array[SourceKind]) -> Int32 {
   for i, candidate in order {

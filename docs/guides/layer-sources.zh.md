@@ -58,7 +58,9 @@ cfg.origin_of("db.port")        // Some(env:APP_DB_PORT)
 - 加入顺序就是优先级；默认 `LastWins`。要反过来用
   `.with_rule(MergeRule::FirstWins)`，按来源类型排序用 `MergeRule::ByKind`，数组里按
   优先级从高到低写（如 `[Env, File]`）。
-- 嵌套表逐键合并，数组整体替换；数组不会按元素合并。
+- 嵌套表逐键合并，数组整体替换；数组不会按元素合并。要让声明的列表键拼接或求并集（配置默认值加命令行追加），用
+  `.with_strategy(path, MergeStrategy::Append)` 或 `MergeStrategy::Union`；声明路径两侧出现非数组值会抛
+  `MergeConflict`。
 - 环境变量默认只按 `.` 分层；要让下划线也分层，加 `.with_separator("_")`（想保留单个
   下划线就用 `"__"`）。命令行把 `-` 和 `.` 当层级；键统一转小写。
 - 环境变量和命令行没有类型声明，内容按字面猜：`6543` 是 `Int`，`true` 是 `Bool`，

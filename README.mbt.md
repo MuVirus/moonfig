@@ -121,7 +121,7 @@ Configuration can come from in-memory defaults, config files, environment variab
 
 Environment variable names split only on `.` by default; add `.with_separator("_")` to turn `APP_DB_PORT` into `db.port`.
 
-A later source overrides only the keys it shares; nested tables merge by key, arrays are replaced as a whole. The default is later-wins; you can flip to first-wins, rank by source kind, or pass a custom function.
+A later source overrides only the keys it shares; nested tables merge by key, arrays are replaced as a whole. The default is later-wins; you can flip to first-wins, rank by source kind, or pass a custom function. A list key can also declare its own strategy with `.with_strategy(path, MergeStrategy::Append)` — concatenate the layers (file defaults first, CLI extras after) or union them with dedup.
 
 Full example: [examples/multi_source](examples/multi_source/README.md). Layering steps and pitfalls: [guides/layer-sources.md](docs/guides/layer-sources.md).
 

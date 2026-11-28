@@ -19,7 +19,7 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #3 | Add a `Bytes` branch to `Value` | active | design/design.md, design/sources.md |
 | #4 | Boundaries of JSON numbers | active | design/extract.md |
 | #5 | Choosing a CBOR library | active | design/sources.md |
-| #6 | Origin tracking and merge rules | partially superseded (#19 resolves the origin-on-errors item without extending the variants) | design/design.md, design/sources.md, guides/layer-sources.md |
+| #6 | Origin tracking and merge rules | partially superseded (#19 resolves the origin-on-errors item; #20 gives MergeConflict a raise site) | design/design.md, design/sources.md, guides/layer-sources.md |
 | #7 | The three sources: file, environment variables, command line | partially superseded (#18 changes the environment variable default separator) | design/sources.md, design/cli-args.md, guides/layer-sources.md |
 | #8 | `String::compare` compares length first | active | none (implementation only) |
 | #9 | Validation | active | design/validate.md |
@@ -33,6 +33,7 @@ conclusion, with paths relative to `docs/`; pure implementation conventions writ
 | #17 | `Separate` takes negative numbers as values | active (supersedes #16's value boundary) | design/cli-args.md, guides/layer-sources.md |
 | #18 | Environment variable separators are opt-in | active (supersedes #7's environment variable separator) | design/sources.md, guides/layer-sources.md |
 | #19 | Error origin is a lookup, not a field on the error | active (supersedes #6's plan to put origins into value-error variants) | design/sources.md, reference/errors.md, plan/roadmap.md |
+| #20 | List merge strategies are a per-key dimension, not a rule variant | active (supersedes #6's claim that no code path raises MergeConflict) | design/design.md, reference/errors.md, guides/layer-sources.md, plan/roadmap.md |
 
 ## 1. Package names cannot collide with MoonBit standard library package names
 
@@ -121,7 +122,7 @@ Status: active | Affects: design/sources.md
 
 ## 6. Origin tracking and merge rules
 
-Status: partially superseded (#19 resolves the origin-on-errors item without extending the variants) | Affects: design/design.md, design/sources.md, guides/layer-sources.md
+Status: partially superseded (#19 resolves the origin-on-errors item; #20 gives MergeConflict a raise site) | Affects: design/design.md, design/sources.md, guides/layer-sources.md
 
 > **Finalized 2026-10: store origin objects, not label strings**
 >
@@ -155,7 +156,8 @@ Status: partially superseded (#19 resolves the origin-on-errors item without ext
 >   site solves both at once.
 > - `ConfigError::MergeConflict` currently has no code path that throws it: all
 >   three merge rules overwrite and do no type-conflict detection. The variant is
->   kept for validation work later.
+>   kept for validation work later. (#20 later gave it a raise site for declared
+>   list keys.)
 > - `StringSource` / `BytesSource` map to `SourceKind::Custom` with labels
 >   `string` / `bytes`. They are neither files nor environment variables; giving
 >   `ByKind` an explicit tier is clearer than forcing them into `Memory`.
@@ -531,3 +533,36 @@ Status: active (supersedes #6's plan to put origins into value-error variants) |
 > call. Structured positions for parse errors (line / column / byte offset) and
 > per-node positions for value errors are not part of this decision; they remain
 > on the roadmap.
+
+## 20. List merge strategies are a per-key dimension, not a rule variant
+
+Status: active (supersedes #6's claim that no code path raises MergeConflict) | Affects: design/design.md, reference/errors.md, guides/layer-sources.md, plan/roadmap.md
+
+> **2026-11: MoonFMI needs list keys to accumulate across layers (file defaults
+> plus CLI extras); replacing them wholesale forces every downstream to bypass
+> the merge engine.**
+>
+> - The strategy lives beside the rule, not inside it:
+>   `Config::with_strategy(path, MergeStrategy)` with `Replace` / `Append` /
+>   `Union`. `MergeRule` keeps owning source ordering only; a
+>   `MergeRule::WithStrategies(...)` variant would have to nest the fallback rule
+>   and tangle two orthogonal axes into one enum.
+> - Strategy matching is by full dotted path, no wildcards yet (`path.mbt`
+>   reserves them). A strategy only acts when both sides at that path are arrays;
+>   two tables still recurse key by key.
+> - Under `Append` / `Union`, a `null` on either side counts as absent and the
+>   other side stands; any other non-array pair raises
+>   `MergeConflict(path, left, right)` — the variant kept since #6 finally has a
+>   raise site, with the shape the error reference reserved.
+> - `Union` dedups by `Value`'s `Eq` (structural, origin-blind) keeping the first
+>   occurrence, so the result order is deterministic: accumulated layers first,
+>   the merging layer's new elements after.
+> - The merged array node takes `over`'s origin like merged tables do; elements
+>   keep their own layer's origin.
+> - `Custom(fn)` takes over merging entirely and ignores strategies; `LiveConfig`
+>   captures the strategy map the way it captures the rule, so hot reload keeps
+>   it.
+>
+> Cost: one extra `Map[String, MergeStrategy]` on `Config` / `LiveConfig`; a
+> declared path with mismatched types now fails the build where it used to
+> overwrite silently.

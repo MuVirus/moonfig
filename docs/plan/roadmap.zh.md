@@ -28,6 +28,7 @@ README 的路线图表是公开摘要，状态和条目与本文保持同步。
 - [ ] 错误来源查询：`origin_of_error(cfg, err)` 返回 `ConfigError` 对应的层，不改错误变体
 - [ ] 结构化解析错误：解析器的原因和位置保留为字段，只在 `Show` 里渲染
 - [ ] 取值错误带位置：`TypeMismatch` / `InvalidValue` 还没有源码区间，需要逐节点的 source map
+- [x] 列表合并策略：`with_strategy(path, Append | Union)` 让声明的列表键拼接而非整体替换；两侧类型不符抛 `MergeConflict`，见 [design.zh.md](../design/design.zh.md#2-合并)
 
 **设计草案（结构化解析错误）**：
 

@@ -56,7 +56,9 @@ cfg.origin_of("db.port")        // Some(env:APP_DB_PORT)
 - The order of addition is the priority order; the default is `LastWins`. For the reverse use
   `.with_rule(MergeRule::FirstWins)`; to order by source type use `MergeRule::ByKind`, writing the array from highest to lowest
   priority (such as `[Env, File]`).
-- Nested tables merge key by key, arrays are replaced as a whole; arrays do not merge element by element.
+- Nested tables merge key by key, arrays are replaced as a whole; arrays do not merge element by element. To append or union a
+  declared list key (file defaults plus CLI extras), use `.with_strategy(path, MergeStrategy::Append)` or `MergeStrategy::Union`;
+  a non-array pair at a declared path raises `MergeConflict`.
 - Environment variables split only on `.` by default; add `.with_separator("_")` (or `"__"` to keep single underscores literal) for
   nested keys. The command line treats `-` and `.` as hierarchy; keys are converted to lowercase uniformly.
 - Environment variables and the command line have no type declarations, so content is guessed literally: `6543` is `Int`, `true` is `Bool`,
