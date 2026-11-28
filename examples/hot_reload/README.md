@@ -54,7 +54,7 @@ no file change, poll() = false
 on_change: db.port = 6543
 file changed, poll() = true
 current: db.port = 6543
-on_error: parse error: Invalid character 'o' at line 1, column 1
+on_error: parse error: file '_build/hot_reload_example.json': Invalid character 'o' at line 1, column 1
 bad config written, poll() = false
 still the old value: db.port = 6543
 on_change: db.port = 7000
