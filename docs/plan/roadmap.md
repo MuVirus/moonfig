@@ -157,9 +157,54 @@ Environment variables are all strings:
 
 ---
 
+## Remote configuration　⬜
+
+**Direction**: Treat a remote endpoint as a Source, not as "a URL downloader". Network IO still happens only in the Source layer; what comes back is bytes or key/value pairs, and parsing, merging, validation, origin tracking and hot reload all reuse the existing paths.
+
+**Tiers** (ordered by how common the capability is in other configuration libraries, not by what MoonBit already has):
+
+| Tier | Scope | Acceptance |
+|---|---|---|
+| 1 | Generic HTTP/HTTPS file source: a URL plus an optional format, auth headers, timeout and retry, conditional requests and a local cache. Also covers Git raw files, Spring Cloud Config (an `Environment` response plus a thin mapping), and object storage reached through a signed or public URL. | A remote file works end to end: `ETag` / `Last-Modified`, timeout and retry, cache fallback when offline, and `origin` naming the URL and revision; a parse or validation failure keeps the old snapshot. |
+| 2 | Remote KV / configuration centers with change notification: etcd, Consul, ZooKeeper, Nacos, Apollo, Firestore, NATS and Kubernetes ConfigMap / Secret. Key, prefix, namespace / group / profile reads; watch, long polling or blocking queries; local snapshot and auth. | A shared KV + watch abstraction works with at least one general KV (etcd or Consul) and one configuration center (Nacos or Apollo): local snapshot, monotonic revision, `origin` with key and revision, and the old snapshot kept when a refresh fails. |
+| 3 | Cloud parameter and secret services: AWS SSM Parameter Store / AppConfig / Secrets Manager, Azure App Configuration / Key Vault, GCP Runtime Config / Secret Manager, Vault / CredHub. Cloud IAM, signing or OAuth, resource hierarchies, versions / labels and secret semantics. | At least one cloud service reads a parameter and a secret through its native auth, with version / label selection and redaction in errors and `origin`. |
+| 4 | Storage-backed and feature-flag sources: S3 / GCS / Blob / OSS SDK semantics, Redis, SQL, MongoDB; LaunchDarkly / Unleash / Flagsmith / OpenFeature. Mostly storage or runtime targeting rather than static configuration. | Decided only after tiers 1–3: either an adapter over an existing client, or explicitly left out when the `Value` / `Source` model cannot represent it cleanly. |
+
+Why this order:
+
+- Viper's remote providers are etcd / etcd3, Consul, Firestore and NATS, with `WatchRemoteConfig`; that is tier 2.
+- Spring Cloud Config's client is HTTP (tier 1); its server backends include Git, Vault, JDBC, Redis, S3, AWS SSM and GCP Secret Manager, which is where the later tiers come from.
+- Apollo and Nacos make namespace / group, long polling and a local snapshot standard; Kubernetes ConfigMap / Secret is the cloud-native KV + watch.
+- Cloud parameter and secret services add IAM, signing and secret semantics, so they follow the generic KV abstraction.
+- Feature flags are runtime targeting plus streaming updates, not static configuration; keep them out until the model needs them.
+
+Shared capabilities, whichever remote is used:
+
+- [ ] Local cache and fallback: persist the last successful snapshot and use it at startup when the remote is unreachable; distinguish "the cache is stale" from "there is no cache".
+- [ ] Refresh strategy: polling with conditional requests, long polling / SSE / watch; a monotonic revision prevents an old response from overwriting newer configuration; keep the old configuration on failure.
+- [ ] Timeouts and retries: exponential backoff with jitter, a configurable cap, cancellation; separate retryable failures (5xx / network) from non-retryable ones (4xx / auth).
+- [ ] Authentication and secrets: read tokens from the environment or a keychain, never from the configuration file; redact sensitive values in logs, errors and `origin`.
+- [ ] Consistency and integrity: TLS verification, revision / checksum / signature checks; validate before replacing the snapshot.
+- [ ] Traceable origins: `origin` reports the remote kind, URL / key, revision and fetch time; merge with local layers in insertion order.
+- [ ] Testability: our own transport trait wraps the client, so tests never touch the real network; platform backends (JS `fetch`, native, wasm) are separate packages.
+
+**How it lands (draft)**: tier 1 adds `http_source/` (or a separate module); the `Source` produces a `Layer`, and the format is left to `Format` / `Detector`. Tier 2 adds a watch-capable Source abstraction and reuses `Locator` / `LiveConfig` for caching and snapshot replacement; each provider is an adapter. A remote response becomes `Bytes` or key/value pairs first, then goes through the existing parse and validation path; no second merge implementation for remote sources.
+
+**HTTP client**: the official `moonbitlang/async/http` is enough for tier 1; no third-party client is needed. It covers native, wasm1 and js (verified on Windows native), so the remote source lives in its own module rather than in `MuVirus/moonfig`: the dependency tree (`async`, `tls` through OpenSSL, `socket`, `gzip`) is heavy and the API is still experimental, and `core/` must stay dependency-free. The package declares `supported_targets = "+native,+wasm,+js"` because async has no wasm-gc support, and `moon check --target all` then skips it instead of failing. `Source::collect` stays synchronous: an async `fetch()` fills a cache and `collect()` returns it, so merging, validation and hot reload keep their current shapes. The client only performs the request; retry, backoff, conditional requests, cache persistence and `origin` remain ours to write.
+
+**Open design questions**:
+
+- Which shape the async entry point takes: the caller drives `HttpSource::fetch()` inside a runtime and `collect()` only reads the cache; whether an async facade (`fetch_all()` / `reload_async()`) is also needed is left to tier 1. wasm-gc has no async support, so the remote module either skips that target or offers cache reads only.
+- Should protocol adapters sit on one generic HTTP Source (a configuration center is just a different URL plus a parser), or should each center get its own Source? The latter is preferred, because authentication, pagination and watch semantics differ a lot.
+- For tier 2, does watch belong in `Source`, or in a separate `Watcher` trait? `LiveConfig` currently polls `Locator`; a push-based watch needs a different shape.
+- Are feature flags configuration? They behave more like "runtime reads plus streaming updates"; leave them out for now and revisit when the `Value` / `Source` model needs them.
+
+**Acceptance**: tier 1 is the entry point for the whole direction; tiers 2–4 are independent increments, each with its acceptance in the table above.
+
+---
+
 ## Future directions　⬜
 
-- [ ] Remote configuration support: fetch configuration files over HTTP/URL, with timeout retries and a local fallback.
 - [ ] Encrypted storage: encrypted parsing and secure storage of sensitive configuration fields.
 - [ ] Preprocessed data: process existing configuration text or data without changing the source data.
 
@@ -173,6 +218,6 @@ Core ──→ Many formats ──→ External Source ──→ Format detection
   └──→ Validation
 ```
 
-"Validation" and "Many formats" do not block each other; either can be done first. "Format detection" only makes sense once there is more than one format.
+"Validation" and "Many formats" do not block each other; either can be done first. "Format detection" only makes sense once there is more than one format. Remote configuration builds on External Source and Format detection; its refresh path reuses Hot reload.
 
 How the documentation system changes is in [doc-system.md](doc-system.md).

@@ -158,7 +158,7 @@ You can also read the whole config into your own struct. Three common styles are
 | ✅ | **Validation** | Required keys, value ranges, custom rules |
 | ✅ | **Format detection** | By suffix, by content, an error when neither decides |
 | ✅ | **Hot reload** | Poll for file changes, re-read and merge, notify listeners, keep the old config when a new one is bad |
-| ⬜ | **Remote configuration** | Fetch configuration files over HTTP/URL, with timeouts, retries and a local fallback. |
+| ⬜ | **Remote configuration** | HTTP files first; then configuration centers / KV with watch, cloud parameter and secret stores, storage and feature flags; cache fallback, conditional refresh, auth and redaction. |
 | ⬜ | **Encrypted storage** | Parse and securely store encrypted values for sensitive configuration fields. |
 | ⬜ | **Preprocessing** | Transform existing configuration text or data without changing the source. |
 

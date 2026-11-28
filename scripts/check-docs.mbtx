@@ -1024,7 +1024,7 @@ fn roadmap_aliases() -> Map[String, String] {
   aliases.set("Validation", "Validation")
   aliases.set("Format detection", "Format detection")
   aliases.set("Hot reload", "Hot reload (polling)")
-  aliases.set("Remote configuration", "Future directions")
+  aliases.set("Remote configuration", "Remote configuration")
   aliases.set("Encrypted storage", "Future directions")
   aliases.set("Preprocessing", "Future directions")
   aliases

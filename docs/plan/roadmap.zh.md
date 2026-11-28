@@ -155,9 +155,54 @@ README 的路线图表是公开摘要，状态和条目与本文保持同步。
 
 ---
 
+## 远程配置　⬜
+
+**方向**：把远端当成一种 Source，而不是「一个 URL 下载器」。网络 IO 仍然只发生在 Source 层；拿回来的是字节或键值对，解析、合并、校验、来源追踪和热更新都复用已有路径。
+
+**梯队**（按其他配置库的常见能力排序，不看 MoonBit 是否已有现成客户端）：
+
+| 梯队 | 范围 | 验收 |
+|---|---|---|
+| 1 | 通用 HTTP/HTTPS 文件源：URL + 可选格式、认证头、超时重试、条件请求和本地缓存。也覆盖 Git raw、Spring Cloud Config（`Environment` 响应加一层薄映射），以及通过签名 URL 或公开 URL 访问的对象存储。 | 一个远端文件端到端跑通：`ETag` / `Last-Modified`、超时重试、断网时回退缓存、`origin` 说明 URL 和 revision；解析或校验失败保留旧快照。 |
+| 2 | 远程 KV / 配置中心（带变更通知）：etcd、Consul、ZooKeeper、Nacos、Apollo、Firestore、NATS、Kubernetes ConfigMap / Secret。按键、前缀、namespace / group / profile 读取；watch、长轮询或 blocking query；本地快照和鉴权。 | 共享的「KV + watch」抽象至少接一个通用 KV（etcd 或 Consul）和一个配置中心（Nacos 或 Apollo）：本地快照、revision 单调、`origin` 带 key 和 revision、刷新失败保留旧快照。 |
+| 3 | 云参数与密钥服务：AWS SSM Parameter Store / AppConfig / Secrets Manager、Azure App Configuration / Key Vault、GCP Runtime Config / Secret Manager、Vault / CredHub。云 IAM、签名或 OAuth、资源层级、版本 / 标签和密钥语义。 | 至少一个云服务用原生认证读到一个参数和一个密钥，支持版本 / 标签选择，错误和 `origin` 里脱敏。 |
+| 4 | 存储型与特性开关来源：S3 / GCS / Blob / OSS 的 SDK 语义、Redis、SQL、MongoDB；LaunchDarkly / Unleash / Flagsmith / OpenFeature。多数是存储或运行时 targeting，不是静态配置。 | 等前三梯队之后决定：要么包一层现成客户端，要么在 `Value` / `Source` 模型不能干净表达时明确不做。 |
+
+为什么这样排：
+
+- Viper 的 remote provider 是 etcd / etcd3、Consul、Firestore、NATS，并带 `WatchRemoteConfig`，对应第二梯队。
+- Spring Cloud Config 的客户端是 HTTP（第一梯队）；它的服务端仓库包括 Git、Vault、JDBC、Redis、S3、AWS SSM、GCP Secret Manager，后面的梯队由此而来。
+- Apollo 和 Nacos 把 namespace / group、长轮询、本地快照做成标准；Kubernetes ConfigMap / Secret 是云原生的 KV + watch。
+- 云参数与密钥服务多了 IAM、签名和密钥语义，所以排在通用 KV 之后。
+- 特性开关是运行时 targeting 加流式更新，不是静态配置；等模型需要时再评估。
+
+共性能力（接哪种远端都要有）：
+
+- [ ] 本地缓存与兜底：上次成功的快照落盘，启动时远端不可达就用它；区分「缓存过期」和「没有缓存」。
+- [ ] 刷新策略：轮询加条件请求、长轮询 / SSE / watch；revision 单调，避免旧响应覆盖新配置；失败时保留旧配置。
+- [ ] 超时与重试：指数退避加抖动、可配置上限、可取消；区分可重试（5xx / 网络）与不可重试（4xx / 鉴权）。
+- [ ] 认证与密钥：token 从环境变量或密钥链读取，不写进配置文件；日志、错误和 `origin` 里对敏感值脱敏。
+- [ ] 一致性与完整性：TLS 校验、revision / checksum / 签名校验；先校验再替换快照。
+- [ ] 来源可追踪：`origin` 报出远端类型、URL / key、revision 和拉取时间；与本地层按加入顺序合并。
+- [ ] 可测试：在客户端之上包一层自己的传输 trait，测试不碰真实网络；平台后端（JS `fetch`、native、wasm）各自成包。
+
+**落地方式（初稿）**：第一梯队新增 `http_source/`（或独立模块）；`Source` 产出 `Layer`，格式交给 `Format` / `Detector`。第二梯队新增可 watch 的 Source 抽象，缓存和快照替换仍复用 `Locator` / `LiveConfig`；每个 provider 是一个适配器。远端响应先落成 `Bytes` 或键值对，再走已有的解析和校验路径，不为远端写第二套合并逻辑。
+
+**HTTP 客户端**：第一梯队用官方的 `moonbitlang/async/http` 就够，不需要第三方客户端。它覆盖 native、wasm1 和 js（已在 Windows native 上验证），所以远端源放在独立模块里，不进 `MuVirus/moonfig`：依赖树（`async`、经 OpenSSL 的 `tls`、`socket`、`gzip`）重，API 也仍是实验性的，而 `core/` 必须保持无依赖。该包声明 `supported_targets = "+native,+wasm,+js"`，因为 async 不支持 wasm-gc；这样 `moon check --target all` 会跳过它而不是失败。`Source::collect` 保持同步：异步的 `fetch()` 填缓存，`collect()` 读缓存，合并、校验和热更新都沿用现有形状。客户端只负责发请求；重试、退避、条件请求、缓存落盘和 `origin` 仍然由我们写。
+
+**待定的设计问题**：
+
+- 异步入口取什么形状：由调用方在运行时里驱动 `HttpSource::fetch()`、`collect()` 只读缓存；是否还需要一个异步门面（`fetch_all()` / `reload_async()`），留给第一梯队实现时决定。wasm-gc 没有 async 支持，远端模块要么跳过该 target，要么只提供读缓存。
+- 协议适配放在一个通用 HTTP Source 上（配置中心只是不同的 URL 加解析），还是每种配置中心一个 Source；倾向后者，因为鉴权、分页和 watch 语义差异很大。
+- 第二梯队的 watch 放在 `Source` 里，还是单独的 `Watcher` trait？`LiveConfig` 现在是轮询 `Locator`，推送式 watch 需要另一种形状。
+- 特性开关是否算配置：它更像「运行时读值加流式更新」，先不做，等 `Value` / `Source` 模型需要时再评估。
+
+**验收**：第一梯队是整个方向的入口；第二到第四梯队是独立增量，验收分别写在上表。
+
+---
+
 ## 后续方向　⬜
 
-- [ ] 远程配置支持：通过 HTTP/URL 拉取配置文件，支持超时重试与本地兜底。
 - [ ] 加密存储：敏感配置字段的加密解析与安全存储。
 - [ ] 预处理数据：对原有配置文本或者数据进行加工处理，不改变源数据。
 
@@ -171,7 +216,7 @@ README 的路线图表是公开摘要，状态和条目与本文保持同步。
   └──→ 校验
 ```
 
-「校验」和「多格式」互不阻塞，可以先做任意一个。「自动发现格式」要等格式多于一种才有意义。
+「校验」和「多格式」互不阻塞，可以先做任意一个。「自动发现格式」要等格式多于一种才有意义。远程配置建立在外部 Source 和自动发现格式之上；刷新路径复用热更新。
 
 文档体系怎么改见 [doc-system.zh.md](doc-system.zh.md)。
 
